@@ -38,6 +38,7 @@ pub mod dispatch;
 pub mod error;
 pub mod gltf;
 pub mod obj;
+pub mod off;
 pub mod ply;
 pub mod probe;
 pub mod stl;

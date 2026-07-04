@@ -15,6 +15,8 @@ pub enum FormatKind {
     Gltf,
     /// 3MF (XML-in-ZIP).
     Threemf,
+    /// Object File Format (Princeton). Binary or ASCII.
+    Off,
 }
 
 /// Map a file extension (lowercase, no dot) to a [`FormatKind`].
@@ -29,6 +31,7 @@ pub fn by_extension(ext: &str) -> Option<FormatKind> {
         "obj" => Some(FormatKind::Obj),
         "gltf" | "glb" => Some(FormatKind::Gltf),
         "3mf" => Some(FormatKind::Threemf),
+        "off" => Some(FormatKind::Off),
         _ => None,
     }
 }
@@ -56,6 +59,10 @@ pub fn probe(extension: Option<&str>, magic: &[u8]) -> Result<FormatKind, Format
         || magic.starts_with(b"ply ")
     {
         return Ok(FormatKind::Ply);
+    }
+    if magic.starts_with(b"OFF") {
+        // "OFF", "OFF BINARY", "OFFST", "OFF\n" - all variants.
+        return Ok(FormatKind::Off);
     }
     if magic.starts_with(b"solid") {
         // "solid" is the ASCII STL header — but binary STL can also start with

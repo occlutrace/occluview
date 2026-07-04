@@ -19,7 +19,8 @@ pub fn dispatch_by_kind(kind: FormatKind, bytes: &[u8]) -> Result<Mesh, FormatEr
         FormatKind::Ply => crate::ply::read(bytes),
         FormatKind::Obj => crate::obj::read(bytes),
         FormatKind::Gltf => crate::gltf::read(bytes),
-        // TODO(formats/threemf): implement in `threemf` module via lib3mf FFI.
+        FormatKind::Off => crate::off::read(bytes),
+        // TODO(formats/threemf): implement natively when demand appears (ADR-0010 pattern).
         FormatKind::Threemf => Err(FormatError::Malformed {
             format: "occluview-formats",
             offset: 0,
