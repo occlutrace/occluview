@@ -93,14 +93,18 @@ criterion = { version = "0.5", features = ["html_reports"] }
 
 # Workspace lints — applied to every crate via `lints.workspace = true`.
 [workspace.lints.rust]
-rust_2018_idioms         = "deny"
+# `rust_2018_idioms` is a group; specific lints below must override it, so set
+# the group priority to -1.
+rust_2018_idioms         = { level = "deny", priority = -1 }
 unsafe_op_in_unsafe_fn   = "deny"
 missing_docs             = "warn"
 unused_qualifications    = "warn"
 
 [workspace.lints.clippy]
-pedantic      = "warn"
-all           = "warn"
+# `pedantic` and `all` are groups; specific lints below must override them, so
+# set the group priority to -1 (clippy requires this for overrides to win).
+pedantic      = { level = "warn", priority = -1 }
+all           = { level = "warn", priority = -1 }
 # Slop blockers (AGENTS.md §3, ANTI_SLOP.md).
 unwrap_used       = "deny"
 expect_used       = "deny"
@@ -111,9 +115,9 @@ dbg_macro         = "deny"
 print_stdout      = "deny"
 print_stderr      = "deny"
 # Sensible pedantic relaxations (override per-crate with justification).
-module_name_repetitions = "allow"
-must_use_candidate      = "allow"
-needless_pass_by_value  = "allow"
+module_name_repetitions = { level = "allow", priority = 1 }
+must_use_candidate      = { level = "allow", priority = 1 }
+needless_pass_by_value  = { level = "allow", priority = 1 }
 
 [profile.release]
 # Strongly optimize the viewer and shell DLL.

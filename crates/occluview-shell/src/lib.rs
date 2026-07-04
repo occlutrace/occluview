@@ -31,9 +31,7 @@ pub use render_thumb::render_thumbnail;
 /// supported extension. (The literal `{E357FCCD-A995-4576-B01F-234630154E96}`
 /// is the shell's `IThumbnailProvider` category, not our own CLSID — our own
 /// CLSID is generated when the COM class lands.)
-pub const THUMBNAIL_PROVIDER_CATEGORY: &str =
-    "{E357FCCD-A995-4576-B01F-234630154E96}";
+pub const THUMBNAIL_PROVIDER_CATEGORY: &str = "{E357FCCD-A995-4576-B01F-234630154E96}";
 
 /// File extensions OccluView registers a thumbnail provider for.
-pub const SUPPORTED_EXTENSIONS: &[&str] =
-    &["stl", "ply", "obj", "gltf", "glb", "3mf"];
+pub const SUPPORTED_EXTENSIONS: &[&str] = &["stl", "ply", "obj", "gltf", "glb", "3mf"];

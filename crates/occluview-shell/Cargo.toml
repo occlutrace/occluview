@@ -39,9 +39,11 @@ features = [
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_Graphics_Imaging",
     "Win32_Graphics_Gdi",
-    "implement",
-    "interface",
 ]
+
+# COM implementation macros. Added back when the IThumbnailProvider class lands
+# (currently a stub). `windows-implement` / `windows-interface` are the modern
+# split crates; selecting them is part of that PR + its ADR-0005 follow-up.
 
 [dev-dependencies]
 proptest = { workspace = true }

@@ -32,8 +32,6 @@ doc-valid-idents = [
     "..",
 ]
 
-# Disallow empty loops (catches `loop {}` busy-waits).
-empty-loop = "warn"
-
-# Type complexity threshold (default 250 — tighten to keep signatures readable).
-type-complexity-threshold = 200
+# NOTE: lint enablement (e.g. `empty_loop`, `too_many_lines`) lives in
+# `[workspace.lints.clippy]` in Cargo.toml, NOT here. This file only holds the
+# numeric thresholds that clippy reads from clippy.toml.

@@ -9,7 +9,7 @@
 //! meshes, the app composes a scene, the renderer consumes it.
 
 use crate::mesh::Mesh;
-use glam::{Affine3, Vec3};
+use glam::{Affine3A, Vec3};
 
 /// Per-instance mesh entry in a scene.
 #[derive(Clone, Debug)]
@@ -18,7 +18,7 @@ pub struct SceneMesh {
     /// owned for now to keep `core` dependency-free.
     pub mesh: Mesh,
     /// Per-instance transform (placement of this mesh in the scene).
-    pub transform: Affine3,
+    pub transform: Affine3A,
     /// Display tint in linear sRGB (0..1). Default white.
     pub tint: [f32; 4],
     /// Opacity 0..1 — used for transparency / "ghost" arches.
@@ -35,7 +35,7 @@ impl SceneMesh {
     pub fn new(mesh: Mesh) -> Self {
         Self {
             mesh,
-            transform: Affine3::IDENTITY,
+            transform: Affine3A::IDENTITY,
             tint: [1.0, 1.0, 1.0, 1.0],
             opacity: 1.0,
             visible: true,
@@ -45,7 +45,7 @@ impl SceneMesh {
     /// Set the per-instance transform.
     #[inline]
     #[must_use]
-    pub fn with_transform(mut self, t: Affine3) -> Self {
+    pub fn with_transform(mut self, t: Affine3A) -> Self {
         self.transform = t;
         self
     }
@@ -131,13 +131,7 @@ impl Scene {
 
 impl Default for SceneMesh {
     fn default() -> Self {
-        Self::new(Mesh::new(None, Vec::new(), Vec::new()).unwrap_or(Mesh {
-            name: None,
-            vertices: Vec::new(),
-            indices: Vec::new(),
-            has_vertex_colors: false,
-            cached_bbox: None,
-        }))
+        Self::new(Mesh::empty())
     }
 }
 

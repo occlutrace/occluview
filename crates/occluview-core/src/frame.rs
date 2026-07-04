@@ -5,7 +5,7 @@
 //! the codebase can assume a single frame. This module centralizes the
 //! conventions and the small conversion helpers.
 
-use glam::{Affine3, Quat, Vec3};
+use glam::{Affine3A, Quat, Vec3};
 
 /// OccluView's canonical up axis.
 pub const UP: Vec3 = Vec3::Y;
@@ -39,16 +39,17 @@ impl SourceFrame {
     /// in the UI. We never guess a frame silently for a format that declares one.
     #[must_use]
     #[inline]
-    pub fn to_canonical(self) -> Affine3 {
+    pub fn to_canonical(self) -> Affine3A {
         match self {
-            SourceFrame::RightHandedYUp | SourceFrame::Unknown => Affine3::IDENTITY,
+            SourceFrame::RightHandedYUp | SourceFrame::Unknown => Affine3A::IDENTITY,
             // Z-up -> Y-up: rotate -90° around X. Maps +Z(old up) -> +Y(new up).
-            SourceFrame::RightHandedZUp => Affine3::from_quat(Quat::from_rotation_x(
-                -core::f32::consts::FRAC_PI_2,
-            )),
+            SourceFrame::RightHandedZUp => {
+                Affine3A::from_quat(Quat::from_rotation_x(-core::f32::consts::FRAC_PI_2))
+            }
             // Left-handed Y-up -> right-handed Y-up: mirror X.
-            SourceFrame::LeftHandedYUp => Affine3::IDENTITY
-                * Affine3::from_scale(Vec3::new(-1.0, 1.0, 1.0)),
+            SourceFrame::LeftHandedYUp => {
+                Affine3A::IDENTITY * Affine3A::from_scale(Vec3::new(-1.0, 1.0, 1.0))
+            }
         }
     }
 }
@@ -61,7 +62,7 @@ mod tests {
     fn y_up_frame_is_identity() {
         assert_eq!(
             SourceFrame::RightHandedYUp.to_canonical(),
-            Affine3::IDENTITY
+            Affine3A::IDENTITY
         );
     }
 
@@ -75,13 +76,16 @@ mod tests {
 
     #[test]
     fn unknown_is_passthrough() {
-        assert_eq!(SourceFrame::Unknown.to_canonical(), Affine3::IDENTITY);
+        assert_eq!(SourceFrame::Unknown.to_canonical(), Affine3A::IDENTITY);
     }
 
     #[test]
     fn left_handed_mirrors_x() {
         let xform = SourceFrame::LeftHandedYUp.to_canonical();
         let mapped = xform.transform_point3(Vec3::X);
-        assert!((mapped - Vec3::new(-1.0, 0.0, 0.0)).length() < 1e-5, "got {mapped}");
+        assert!(
+            (mapped - Vec3::new(-1.0, 0.0, 0.0)).length() < 1e-5,
+            "got {mapped}"
+        );
     }
 }

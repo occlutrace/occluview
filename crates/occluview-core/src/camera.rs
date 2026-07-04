@@ -15,8 +15,9 @@ pub struct Camera {
     pub target: Vec3,
     /// Distance from target to eye, in millimeters.
     pub distance: f32,
-    /// Yaw (around world Y) and pitch (from horizontal plane), in radians.
+    /// Yaw (around world Y), in radians.
     pub yaw: f32,
+    /// Pitch (elevation from the horizontal plane), in radians.
     pub pitch: f32,
     /// Vertical field of view, in radians.
     pub fovy: f32,
@@ -118,7 +119,10 @@ mod tests {
         };
         let eye = c.eye();
         // Pitch=0, yaw=0 → eye at (0, 0, +distance) (looking at origin from +Z).
-        assert!((eye - Vec3::new(0.0, 0.0, 10.0)).length() < 1e-4, "eye={eye}");
+        assert!(
+            (eye - Vec3::new(0.0, 0.0, 10.0)).length() < 1e-4,
+            "eye={eye}"
+        );
     }
 
     #[test]

@@ -64,11 +64,7 @@ pub fn probe(extension: Option<&str>, magic: &[u8]) -> Result<FormatKind, Format
         return Ok(FormatKind::Stl);
     }
     // glTF .gltf (JSON) — probe for leading `{` or whitespace then `"asset"`.
-    if magic
-        .iter()
-        .take_while(|b| b.is_ascii_whitespace())
-        .count()
-        < magic.len()
+    if magic.iter().take_while(|b| b.is_ascii_whitespace()).count() < magic.len()
         && magic.first() == Some(&b'{')
     {
         return Ok(FormatKind::Gltf);
@@ -110,7 +106,10 @@ mod tests {
 
     #[test]
     fn probe_ply_magic() {
-        assert_eq!(probe(None, b"ply\nformat ascii 1.0\n").unwrap(), FormatKind::Ply);
+        assert_eq!(
+            probe(None, b"ply\nformat ascii 1.0\n").unwrap(),
+            FormatKind::Ply
+        );
     }
 
     #[test]

@@ -72,6 +72,21 @@ pub struct Mesh {
 }
 
 impl Mesh {
+    /// An empty mesh — no vertices, no triangles.
+    ///
+    /// Cheap to construct; used as a placeholder (e.g. for `Default`).
+    #[must_use]
+    #[inline]
+    pub fn empty() -> Self {
+        Self {
+            name: None,
+            vertices: Vec::new(),
+            indices: Vec::new(),
+            has_vertex_colors: false,
+            cached_bbox: None,
+        }
+    }
+
     /// Construct from parts. Validates the index range.
     ///
     /// # Errors
@@ -83,23 +98,19 @@ impl Mesh {
         indices: Vec<u32>,
     ) -> Result<Self, CoreError> {
         if indices.len() % 3 != 0 {
-            return Err(CoreError::IndexCountNotMultipleOfThree { index_count: indices.len() });
+            return Err(CoreError::IndexCountNotMultipleOfThree {
+                index_count: indices.len(),
+            });
         }
         let vertex_count = u32::try_from(vertices.len()).unwrap_or(u32::MAX);
-        if let Some((i, bad)) = indices
-            .iter()
-            .enumerate()
-            .find(|(_, &v)| v >= vertex_count)
-        {
+        if let Some((i, bad)) = indices.iter().enumerate().find(|(_, &v)| v >= vertex_count) {
             return Err(CoreError::IndexOutOfRange {
                 at_index: i,
-                value: bad,
+                value: *bad,
                 vertex_count,
             });
         }
-        let has_vertex_colors = vertices
-            .iter()
-            .any(|v| v.color != [255, 255, 255, 255]);
+        let has_vertex_colors = vertices.iter().any(|v| v.color != [255, 255, 255, 255]);
         Ok(Self {
             name,
             vertices,
@@ -151,9 +162,7 @@ impl Mesh {
         if let Some(b) = self.cached_bbox {
             return b;
         }
-        let b = Aabb::enclose_points(self.vertices.iter().map(|v| {
-            Vec3::from_array(v.position)
-        }));
+        let b = Aabb::enclose_points(self.vertices.iter().map(|v| Vec3::from_array(v.position)));
         self.cached_bbox = Some(b);
         b
     }
@@ -168,6 +177,7 @@ pub struct MeshBuilder {
 }
 
 impl MeshBuilder {
+    /// Construct an empty builder.
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -238,7 +248,10 @@ mod tests {
     #[test]
     fn bad_index_count_is_rejected() {
         let err = Mesh::new(None, vec![v(0.0, 0.0, 0.0)], vec![0, 1]).unwrap_err();
-        assert!(matches!(err, CoreError::IndexCountNotMultipleOfThree { .. }));
+        assert!(matches!(
+            err,
+            CoreError::IndexCountNotMultipleOfThree { .. }
+        ));
     }
 
     #[test]
@@ -251,11 +264,7 @@ mod tests {
     fn bbox_is_computed_and_cached() {
         let mut mesh = Mesh::new(
             None,
-            vec![
-                v(-1.0, -2.0, 0.0),
-                v(3.0, 4.0, 0.0),
-                v(0.0, 0.0, 0.0),
-            ],
+            vec![v(-1.0, -2.0, 0.0), v(3.0, 4.0, 0.0), v(0.0, 0.0, 0.0)],
             vec![0, 1, 2],
         )
         .expect("valid");

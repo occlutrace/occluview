@@ -19,10 +19,25 @@
 //! per the roadmap, each with property tests and fuzz targets.
 
 #![forbid(unsafe_code)]
+// Test-only relaxation of the slop lints — see occluview-core/src/lib.rs.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::float_cmp,
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_lossless,
+        clippy::cast_possible_wrap,
+    )
+)]
 
 pub mod dispatch;
 pub mod error;
 pub mod probe;
+pub mod stl;
 
 /// The common interface every format reader implements.
 ///
@@ -38,7 +53,7 @@ pub trait FormatReader {
     ///
     /// # Errors
     /// See [`FormatError`].
-    fn read(&self, bytes: &[u8]) -> Result<occluview_core::Mesh, error::FormatError>;
+    fn read(&self, bytes: &[u8]) -> Result<occluview_core::Mesh, FormatError>;
 }
 
 pub use dispatch::dispatch_by_extension;

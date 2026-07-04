@@ -20,14 +20,30 @@
 
 #![cfg_attr(not(test), deny(clippy::panic))]
 #![forbid(unsafe_code)]
+// In tests we relax the slop lints: `unwrap`/`expect`/`float_cmp`/`as` casts
+// are legitimate test conveniences (AGENTS.md §3 — the ban applies to library
+// and binary code, not to `#[cfg(test)]` modules).
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::float_cmp,
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_lossless,
+        clippy::cast_possible_wrap,
+    )
+)]
 
-pub mod units;
-pub mod frame;
 pub mod bbox;
-pub mod mesh;
-pub mod scene;
 pub mod camera;
 pub mod error;
+pub mod frame;
+pub mod mesh;
+pub mod scene;
+pub mod units;
 
 pub use bbox::Aabb;
 pub use camera::Camera;

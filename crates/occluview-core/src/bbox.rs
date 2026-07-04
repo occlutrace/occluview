@@ -21,7 +21,7 @@ impl Aabb {
     pub const EMPTY: Self = Self {
         min: Vec3::splat(f32::INFINITY),
         max: Vec3::splat(f32::NEG_INFINITY),
-    }
+    };
 
     /// Construct from explicit min/max corners.
     #[must_use]
@@ -43,9 +43,7 @@ impl Aabb {
     #[inline]
     #[must_use]
     pub fn enclose_points(points: impl IntoIterator<Item = Vec3>) -> Self {
-        points
-            .into_iter()
-            .fold(Self::EMPTY, |acc, p| acc.enclose_point(p))
+        points.into_iter().fold(Self::EMPTY, Aabb::enclose_point)
     }
 
     /// True if no points have been enclosed yet.
@@ -77,11 +75,7 @@ impl Aabb {
     #[must_use]
     pub fn dimensions_mm(self) -> [Millimeters; 3] {
         let s = self.size();
-        [
-            Millimeters(s.x),
-            Millimeters(s.y),
-            Millimeters(s.z),
-        ]
+        [Millimeters(s.x), Millimeters(s.y), Millimeters(s.z)]
     }
 
     /// Half-diagonal length from the center — the radius of the tightest sphere.
@@ -111,10 +105,7 @@ mod tests {
 
     #[test]
     fn enclose_two_points_grows_bounds() {
-        let b = Aabb::enclose_points([
-            Vec3::new(-1.0, 0.0, 0.0),
-            Vec3::new(2.0, 4.0, -3.0),
-        ]);
+        let b = Aabb::enclose_points([Vec3::new(-1.0, 0.0, 0.0), Vec3::new(2.0, 4.0, -3.0)]);
         assert_eq!(b.min, Vec3::new(-1.0, 0.0, -3.0));
         assert_eq!(b.max, Vec3::new(2.0, 4.0, 0.0));
         assert_eq!(b.center(), Vec3::new(0.5, 2.0, -1.5));
@@ -131,7 +122,13 @@ mod tests {
 
     #[test]
     fn half_diagonal_of_unit_cube() {
+        // Unit cube: half-diagonal = |(0.5, 0.5, 0.5)| = sqrt(3)/2.
         let b = Aabb::from_min_max(Vec3::ZERO, Vec3::ONE);
-        assert!((b.half_diagonal() - core::f32::consts::SQRT_2 * 0.5) < 1e-5);
+        let expected = 0.5_f32 * 3.0_f32.sqrt();
+        assert!(
+            (b.half_diagonal() - expected).abs() < 1e-5,
+            "got {} expected {expected}",
+            b.half_diagonal()
+        );
     }
 }

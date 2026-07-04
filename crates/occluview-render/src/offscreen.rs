@@ -68,9 +68,7 @@ mod tests {
         // Per AGENTS.md §9.5, we never silently fake success. The stub returns a
         // typed error until the real implementation lands.
         use occluview_core::{Mesh, MeshBuilder};
-        let mesh = MeshBuilder::new().build().unwrap_or(
-            Mesh::new(None, Vec::new(), Vec::new()).unwrap(),
-        );
+        let mesh = MeshBuilder::new().build().unwrap_or_else(|_| Mesh::empty());
         let res = Offscreen.render(&mesh, ThumbnailSpec::default());
         assert!(matches!(res, Err(RenderError::Timeout { .. })));
     }
