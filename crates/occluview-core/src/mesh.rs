@@ -58,6 +58,21 @@ impl Vertex {
     }
 }
 
+/// Whether a [`Mesh`] carries triangle connectivity or is just a point cloud.
+///
+/// Dental color scanners frequently emit PLY files with `element vertex` but
+/// no `element face` — a point cloud. The renderer draws these with a
+/// different pipeline (point list, not triangle list); the loader sets the
+/// kind so downstream code can branch.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub enum MeshKind {
+    /// Triangle mesh: `indices` is non-empty and indexes triangle corners.
+    #[default]
+    TriangleMesh,
+    /// Point cloud: `indices` is empty; each vertex is drawn as a point.
+    PointCloud,
+}
+
 /// A triangle mesh, the central geometry type.
 #[derive(Clone, Debug)]
 pub struct Mesh {
@@ -67,6 +82,8 @@ pub struct Mesh {
     indices: Vec<u32>,
     /// True if any vertex carries a non-default color.
     has_vertex_colors: bool,
+    /// Whether this is a triangle mesh or a point cloud.
+    kind: MeshKind,
     /// Cached bounding box, lazily computed.
     cached_bbox: Option<Aabb>,
 }
@@ -83,6 +100,22 @@ impl Mesh {
             vertices: Vec::new(),
             indices: Vec::new(),
             has_vertex_colors: false,
+            kind: MeshKind::default(),
+            cached_bbox: None,
+        }
+    }
+
+    /// Construct a point cloud from vertices only (no indices). Sets
+    /// [`MeshKind::PointCloud`].
+    #[must_use]
+    pub fn point_cloud(name: Option<String>, vertices: Vec<Vertex>) -> Self {
+        let has_vertex_colors = vertices.iter().any(|v| v.color != [255, 255, 255, 255]);
+        Self {
+            name,
+            vertices,
+            indices: Vec::new(),
+            has_vertex_colors,
+            kind: MeshKind::PointCloud,
             cached_bbox: None,
         }
     }
@@ -116,6 +149,7 @@ impl Mesh {
             vertices,
             indices,
             has_vertex_colors,
+            kind: MeshKind::TriangleMesh,
             cached_bbox: None,
         })
     }
@@ -155,6 +189,20 @@ impl Mesh {
         self.has_vertex_colors
     }
 
+    /// Whether this is a triangle mesh or a point cloud.
+    #[inline]
+    #[must_use]
+    pub fn kind(&self) -> MeshKind {
+        self.kind
+    }
+
+    /// True if this geometry has no triangle connectivity (point cloud).
+    #[inline]
+    #[must_use]
+    pub fn is_point_cloud(&self) -> bool {
+        self.kind == MeshKind::PointCloud
+    }
+
     /// Axis-aligned bounding box, computed once and cached.
     #[inline]
     #[must_use]
@@ -174,6 +222,9 @@ pub struct MeshBuilder {
     name: Option<String>,
     vertices: Vec<Vertex>,
     indices: Vec<u32>,
+    /// If true, `build()` produces a [`MeshKind::PointCloud`] regardless of
+    /// indices. Set by loaders that know there is no face element.
+    force_point_cloud: bool,
 }
 
 impl MeshBuilder {
@@ -182,6 +233,15 @@ impl MeshBuilder {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Mark the result as a point cloud (no triangle connectivity).
+    /// Loaders call this when the source format declares vertices but no faces.
+    #[inline]
+    #[must_use]
+    pub const fn as_point_cloud(mut self) -> Self {
+        self.force_point_cloud = true;
+        self
     }
 
     /// Set the optional name.
@@ -220,6 +280,9 @@ impl MeshBuilder {
     /// # Errors
     /// See [`Mesh::new`].
     pub fn build(self) -> Result<Mesh, CoreError> {
+        if self.force_point_cloud {
+            return Ok(Mesh::point_cloud(self.name, self.vertices));
+        }
         Mesh::new(self.name, self.vertices, self.indices)
     }
 }

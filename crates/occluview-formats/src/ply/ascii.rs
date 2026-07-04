@@ -77,7 +77,14 @@ pub fn read(parsed: &ParsedHeader<'_>) -> Result<Mesh, FormatError> {
 
     let mut tokens = data_text.split_ascii_whitespace();
 
-    let mut builder = MeshBuilder::new().with_name("PLY");
+    // Point cloud if the header declares no `element face`.
+    let has_face = parsed.elements.iter().any(|e| e.name == "face");
+    let builder_init = MeshBuilder::new().with_name("PLY");
+    let mut builder = if has_face {
+        builder_init
+    } else {
+        builder_init.as_point_cloud()
+    };
 
     // Process elements in declaration order, consuming exactly `count` rows
     // for each. The vertex element provides positions/normals/colors; the face

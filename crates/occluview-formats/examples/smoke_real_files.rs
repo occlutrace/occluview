@@ -53,8 +53,13 @@ fn main() -> ExitCode {
                 let [w, h, d] = bbox.dimensions_mm();
                 let tris = mesh.triangle_count();
                 let verts = mesh.vertices().len();
+                let kind = if mesh.is_point_cloud() {
+                    "points"
+                } else {
+                    "mesh"
+                };
                 println!(
-                    "[ OK ] {label}\n         {size_mb:.1} MB  ext={ext}  tris={tris}  verts={verts}  colors={}  bbox={:.1} x {:.1} x {:.1} mm",
+                    "[ OK ] {label}\n         {size_mb:.1} MB  ext={ext}  {kind}  tris={tris}  verts={verts}  colors={}  bbox={:.1} x {:.1} x {:.1} mm",
                     if mesh.has_vertex_colors() { "yes" } else { "no" },
                     w.as_mm(),
                     h.as_mm(),

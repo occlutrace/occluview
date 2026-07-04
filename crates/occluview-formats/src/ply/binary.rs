@@ -189,7 +189,13 @@ enum ScalarValue {
 
 fn read_with(parsed: &ParsedHeader<'_>, endian: Endian) -> Result<Mesh, FormatError> {
     let mut cursor = Cursor::new(parsed.data, endian);
-    let mut builder = MeshBuilder::new().with_name("PLY");
+    let has_face = parsed.elements.iter().any(|e| e.name == "face");
+    let builder_init = MeshBuilder::new().with_name("PLY");
+    let mut builder = if has_face {
+        builder_init
+    } else {
+        builder_init.as_point_cloud()
+    };
 
     for element in &parsed.elements {
         match element.name.as_str() {

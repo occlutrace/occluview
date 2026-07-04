@@ -48,6 +48,6 @@ pub mod units;
 pub use bbox::Aabb;
 pub use camera::Camera;
 pub use error::CoreError;
-pub use mesh::{Mesh, MeshBuilder, Vertex};
+pub use mesh::{Mesh, MeshBuilder, MeshKind, Vertex};
 pub use scene::{Scene, SceneMesh};
 pub use units::Millimeters;
