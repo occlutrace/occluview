@@ -18,9 +18,9 @@ pub fn dispatch_by_kind(kind: FormatKind, bytes: &[u8]) -> Result<Mesh, FormatEr
         FormatKind::Stl => crate::stl::read(bytes),
         FormatKind::Ply => crate::ply::read(bytes),
         FormatKind::Obj => crate::obj::read(bytes),
-        // TODO(formats/gltf): implement in `gltf` module via cgltf (zip-slip-safe).
+        FormatKind::Gltf => crate::gltf::read(bytes),
         // TODO(formats/threemf): implement in `threemf` module via lib3mf FFI.
-        FormatKind::Gltf | FormatKind::Threemf => Err(FormatError::Malformed {
+        FormatKind::Threemf => Err(FormatError::Malformed {
             format: "occluview-formats",
             offset: 0,
             reason: format!("reader for {kind:?} not yet implemented (see ROADMAP and ADR-0004)"),
@@ -93,10 +93,10 @@ mod tests {
 
     #[test]
     fn unimplemented_reader_returns_malformed() {
-        // glTF is the remaining stub. Use content that does NOT match any
-        // implemented reader's magic (no "ply", "solid", "glTF", PK zip, "v ";
-        // not a binary STL by size formula).
-        let res = dispatch_by_extension("gltf", &[0xA5u8; 16]);
+        // 3MF is the remaining stub (PK zip magic; content that won't satisfy
+        // any implemented reader's parser either, so it routes by extension to
+        // the stub arm).
+        let res = dispatch_by_extension("3mf", &[0xA5u8; 16]);
         let Err(FormatError::Malformed { reason, .. }) = res else {
             panic!("expected Malformed stub error, got {res:?}");
         };

@@ -43,3 +43,4 @@ an internal implementation detail with no cross-crate impact.
 - [ADR-0007: Mesh-only — no volumetric CBCT/DICOM in v1](0007-mesh-only-no-volumetric-cbct.md)
 - [ADR-0008: Apache-2.0 license, open-core model](0008-apache-2.0-open-core.md)
 - [ADR-0009: Dental defaults — mm units, occlusal camera, Y-up](0009-dental-defaults.md)
+- [ADR-0010: glTF reader via serde_json, not cgltf](0010-gltf-via-serde-json-not-cgltf.md)

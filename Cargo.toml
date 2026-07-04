@@ -53,6 +53,10 @@ rayon   = "1.10"
 thiserror = "1.0"
 anyhow    = "1.0"           # binaries only (AGENTS.md §4 / ENGINEERING.md §3)
 
+# Serialization (glTF JSON parsing — ADR-0010).
+serde      = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
 # Logging.
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
