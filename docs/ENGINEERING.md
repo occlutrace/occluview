@@ -95,7 +95,23 @@ Repeated from `AGENTS.md` §3, enforced in CI:
 - Function arguments: ≤ 5 (clippy).
 - `unwrap`/`expect`/`panic!` outside tests/init: 0 (clippy).
 
-## 8. Releases
+## 8. Cross-compile check (catch Windows bugs on Linux)
+
+The shell and app crates are Windows-only (ADR-0001). On a Linux dev host,
+type-check them by cross-compiling to `x86_64-pc-windows-gnu`:
+
+```bash
+rustup target add x86_64-pc-windows-gnu
+cargo check -p occluview-core -p occluview-formats -p occluview-render \
+    --target x86_64-pc-windows-gnu
+```
+
+This catches type errors in `windows-rs` bindings and COM code without a
+Windows VM. The cross-compile job in `.github/workflows/ci.yml` runs this
+on every push. Real execution (DLL registration, Explorer thumbnail) still
+needs a Windows host (see CONTRIBUTING.md "Windows testing").
+
+## 9. Releases
 
 1. Ensure `main` is green and the perf bench is within budget.
 2. Update `docs/CHANGELOG.md`: move `[Unreleased]` to `vX.Y.Z (YYYY-MM-DD)`.
