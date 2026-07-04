@@ -12,6 +12,16 @@ Categories: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`,
 ## [Unreleased]
 
 ### Added
+- **PLY reader** (`occluview-formats::ply`): ASCII + binary little-endian +
+  big-endian, with full vertex-color support (the dental NIRI/mucosal-shade
+  format). Header parser, ASCII token reader, binary Cursor with Endian
+  helpers. 22 new tests.
+- **STL reader** (`occluview-formats::stl`): binary + ASCII, with dental-scanner
+  quirk tolerance (lying triangle counts, non-ASCII headers, missing
+  `endsolid`, case-insensitive keywords).
+- **Research base**: `docs/RESEARCH.md` consolidating the five-stream
+  investigation (Windows shell, render stack, governance, formats, landscape)
+  that validated and refined the foundational decisions.
 - Project foundation: `AGENTS.md` (constitution + 7-stage workflow),
   `CONTRIBUTING.md`, `SECURITY.md`, `TRADEMARK.md`, `CODE_OF_CONDUCT.md`.
 - Architecture documentation: `docs/ARCHITECTURE.md` and the foundational ADR set

@@ -79,6 +79,44 @@ CBCT interpretation) must be escalated to maintainers and may be rejected.
 - **3MF** — XML-in-ZIP; rich metadata, materials; used increasingly for 3D
   printing handoff. Loaded via lib3mf (ADR-0004).
 
+## Dental scanning (extended)
+
+- **NIRI** — Near-Infrared Imaging. Some intraoral scanners (3Shape TRIOS,
+  iTero, Medit) capture near-infrared channels for caries/proximity detection
+  alongside surface color. Delivered as separate grayscale textures or as
+  vertex/texture color; STL cannot carry it, only PLY/OBJ+MTL/glTF.
+- **Mucosal shade** — surface color of the gums/teeth captured for shade
+  matching. Carried as vertex color (PLY) or texture (OBJ+MTL, glTF).
+- **PCA** — Principal Component Analysis. The standard pose-invariant method for
+  auto-orienting a dental mesh for thumbnails: covariance SVD on the vertex
+  cloud gives arch-length / buccal-lingual / occlusal-gingival axes.
+  See `docs/RESEARCH.md` §4.6.
+
+## Windows shell
+
+- **MOTW** — Mark-of-the-Web. An alternate-data-stream flag Windows attaches to
+  files downloaded from the Internet Zone. Win11 suppresses preview handlers for
+  MOTW files by default; thumbnails are unaffected. Common in dental labs
+  receiving scans by email.
+- **WARP** — Windows Advanced Rasterization Platform. Microsoft's software
+  D3D rasterizer. Our no-GPU fallback for the thumbnail worker (ADR-0005).
+- **Surrogate** — the host process (`dllhost.exe` for thumbnails, `prevhost.exe`
+  for preview handlers) Windows uses to run shell extensions out-of-process.
+- **Job Object** — a Windows kernel object for grouping/limiting processes. The
+  thumbnail worker runs under one with a RAM cap and kill-on-hang watchdog.
+
+## Regulatory
+
+- **SaMD** — Software as a Medical Device (FDA). Software with a medical
+  intended use. OccluView is **not** SaMD: it is display-only CAD preview.
+- **MDDS** — Medical Device Data System. A removed-from-regulation FDA category
+  for software that only displays/stores/transfers device data without
+  interpretation. OccluView's display-only scope aligns here.
+- **MDR** — Medical Device Regulation (EU). Rule 11 means most standalone
+  medical-device software is Class IIa+. OccluView is outside MDR Art. 2(1) (no
+  medical purpose). Intended-use statement must be confirmed by regulatory
+  counsel before any public release.
+
 ## Process / governance
 
 - **ADR** — Architecture Decision Record (`docs/adr/`). The "why" of a decision.
@@ -87,3 +125,5 @@ CBCT interpretation) must be escalated to maintainers and may be rejected.
 - **Open-core** — Apache-2.0 viewer (this repo) + proprietary OccluTrace cloud.
 - **Slop** — plausible-but-unearned code. See `docs/ANTI_SLOP.md`.
 - **Conventional Commit** — `<type>(<scope>): <subject>` (`AGENTS.md` §5).
+- **Assisted-by** — commit trailer for AI attribution, in place of
+  `Co-authored-by` (Linux kernel convention, `AGENTS.md` §5).

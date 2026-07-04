@@ -83,3 +83,52 @@ deferred to v2.
   footgun (Raymond Chen documents it extensively); even with .NET 8 it's riskier
   than native.
 - **Defer thumbnails to v2.** Rejected — it's a top-3 reason users will adopt.
+
+---
+
+## Addendum (2026-07, post-research refinement)
+
+Deeper research (`docs/RESEARCH.md` §1.2) refined the architecture: **the
+in-proc stub must not render**. It spawns / connects to a separate worker
+process that does all parsing and rendering. This is the production pattern used
+by stl-thumb, Icaros, FastPictureViewer, and Microsoft's own samples.
+
+```
+explorer.exe / dllhost.exe (surrogate)
+  occluview_shell.dll  (native Rust COM, ~50 KB)
+    IThumbnailProvider + IInitializeWithStream
+    ── spawns / connects to ─────────────►  ThumbWorker
+                                              (= occluview-cli thumbnail today)
+                                              restricted token + Job Object
+                                              (RAM cap, kill-on-hang watchdog)
+                                              mesh parser + decimator + WARP raster
+                                              ───► HBITMAP via shared mem
+```
+
+**Why a separate worker (not just out-of-proc COM):**
+
+- A worker crash never reaches `explorer.exe` or even the COM surrogate. The OS
+  imposes a responsiveness budget; a black-listed thumbnailer is very hard to
+  diagnose ("thumbnails just stopped working").
+- The worker can be sandboxed with a restricted token + Job Object (RAM cap,
+  kill-on-hang) — essential because the mesh parser is a large attack surface
+  reading untrusted files.
+- Multiple `GetThumbnail` calls can be batched in one worker for cache-warming.
+
+**WARP, not GPU, in the worker.** For 256-px thumbnails of decimated meshes,
+WARP (Windows Advanced Rasterization Platform, the documented software fallback)
+is fast enough (<100 ms), deterministic, and immune to RDP/headless/no-GPU
+conditions. GPU in the worker buys little and costs fragility. Reserve GPU for
+the live viewer app (`occluview-app`). ([WARP Guide][warp])
+
+**`IInitializeWithStream`, not `IInitializeWithFile`.** Lets the shell hand a
+stream for Mark-of-the-Web files and OneDrive placeholders — both common in
+dental labs receiving scans by email. ([textslashplain: Shell Previews
+Restricted][motw])
+
+**The worker is `occluview-cli thumbnail`.** The CLI subcommand already exists
+as the debug path; it becomes the worker's entry point. This is a good
+architectural fit — one render code path, debuggable outside Explorer.
+
+[warp]: https://learn.microsoft.com/en-us/windows/win32/direct3darticles/directx-warp
+[motw]: https://textslashplain.com/2025/10/20/windows-shell-previews/

@@ -16,8 +16,15 @@ Windows Explorer.
 ---
 
 OccluView is an open-source desktop viewer built by
-[OccluTrace](https://occlutrace.ai) for dental labs and clinics. It is designed
-around three principles:
+[OccluTrace](https://occlutrace.ai) for dental labs and clinics.
+
+> **Why now?** Microsoft deprecated 3D Viewer in February 2026 and removed it
+> from the Store on **July 1, 2026** — and it never provided STL/PLY thumbnails
+> anyway. Paint 3D, 3D Builder, and Print 3D are already gone. There is no
+> first-party answer for opening dental scans on Windows. OccluView fills that
+> gap. See [`docs/RESEARCH.md`](docs/RESEARCH.md) §5.1 for the landscape.
+
+It is designed around three principles:
 
 1. **It just opens.** Cold start under 400 ms, idle RAM under 120 MB. It is an
    *opener*, not an editor. Drop a file, see it, move on.
@@ -34,15 +41,20 @@ around three principles:
 getting started. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the
 [open issues](../../issues) for the roadmap.
 
-## Supported formats (target)
+## Supported formats
 
-| Format | Binary | ASCII | Vertex colors | Materials | Notes                                   |
-|--------|:------:|:-----:|:-------------:|:---------:|-----------------------------------------|
-| STL    | ✅     | ✅    | —             | —         | dental workhorse                        |
-| PLY    | ✅     | ✅    | ✅            | —         | color/NIR scans                         |
-| OBJ    | ✅     | ✅    | via `mtl`     | ✅        |                                         |
-| glTF/GLB | ✅   | ✅    | ✅            | ✅ (PBR)  |                                         |
-| 3MF    | ✅     | —     | ✅            | ✅        | via lib3mf                              |
+| Format | Binary | ASCII | Vertex colors | Materials | Status                          |
+|--------|:------:|:-----:|:-------------:|:---------:|---------------------------------|
+| STL    | done   | done  | —             | —         | **shipped** (binary + ASCII)    |
+| PLY    | done   | done  | done          | —         | **shipped** (LE/BE/ASCII, color)|
+| OBJ    | —      | todo  | via `mtl`     | todo      | next                            |
+| glTF/GLB | todo | todo  | todo          | todo (PBR)| via cgltf                       |
+| 3MF    | todo   | —     | todo          | todo      | via lib3mf (BSD-3)              |
+
+PLY is the strategic dental format: it is the only one of these that carries
+per-vertex color (NIRI/mucosal-shade scans), and recent peer-reviewed work
+recommends it for long-term archival of intraoral scans. See
+[`docs/FORMAT_SUPPORT.md`](docs/FORMAT_SUPPORT.md).
 
 ## Architecture in one paragraph
 
@@ -85,6 +97,7 @@ responsibility per file, conventional commits, no AI slop.
 Useful entry points:
 - [`AGENTS.md`](AGENTS.md) — constitution + 7-stage workflow
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — crate graph and data flow
+- [`docs/RESEARCH.md`](docs/RESEARCH.md) — the research base behind every decision
 - [`docs/adr/`](docs/adr/) — architecture decision records
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, conventions, Definition of Done
 - [`docs/ANTI_SLOP.md`](docs/ANTI_SLOP.md) — how we keep the codebase clean

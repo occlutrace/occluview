@@ -193,6 +193,14 @@ The lint stays green by exception flag, recorded in the PR.
   - types: `feat fix docs style refactor perf test build ci chore`
   - scopes: `core formats render shell app cli docs ci`
   - breaking change: `feat(...)!: ...` + `BREAKING CHANGE:` footer
+- **ASCII-only artifacts.** No em-dashes (`—`), unicode arrows (`→`), ellipsis
+  (`…`), or emoji in code, comments, commit messages, or PR text. Em-dashes in
+  particular are a tell-tale fingerprint of AI text leaking into human artifacts
+  (llama.cpp rule, see `docs/RESEARCH.md` §3.2). Use `,` `:` `-` `--` instead.
+- **Attribution for AI-assisted commits:** use the `Assisted-by:` trailer,
+  **never** `Co-authored-by:` for an AI. Format:
+  `Assisted-by: Claude:claude-5.2-sonnet [claude-code]` (Linux kernel convention).
+  AI must never add `Signed-off-by:` — only humans can legally certify the DCO.
 - Branch: `feat/<scope>-<topic>`, `fix/<scope>-<topic>`, `docs/<topic>`.
 - PR size: target **< 600 diff lines**. Larger changes split into a stack.
 - PR template (`.github/pull_request_template.md`) is mandatory.
