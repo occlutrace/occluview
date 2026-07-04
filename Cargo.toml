@@ -1,0 +1,131 @@
+# OccluView — Cargo workspace root.
+#
+# Layering law (AGENTS.md §0.4, ARCHITECTURE.md §3):
+#   core ← (nothing)
+#   formats → core
+#   render  → core
+#   shell   → core + render
+#   app     → core + formats + render + shell
+#   cli     → core + formats + render
+# Cycles are P0. Never add an upward dependency.
+#
+# License: Apache-2.0 (NOTICE + LICENSE).
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/occluview-core",
+    "crates/occluview-formats",
+    "crates/occluview-render",
+    "crates/occluview-shell",
+    "crates/occluview-app",
+    "crates/occluview-cli",
+]
+
+# Workspace-wide package metadata. Crates override only what they need.
+[workspace.package]
+version = "0.0.1"            # pre-1.0; see docs/CHANGELOG.md
+edition = "2021"
+rust-version = "1.81"        # MSRV; matches rust-toolchain.toml
+authors = ["OccluTrace, Inc. and contributors"]
+license = "Apache-2.0"
+repository = "https://github.com/occlutrace/occluview"
+homepage = "https://occlutrace.ai"
+publish = false              # we are not on crates.io yet
+
+# Shared dependency versions (single source of truth). Reference as
+# `dep = { workspace = true }` in each crate's [dependencies].
+[workspace.dependencies]
+# Internal crates.
+occluview-core    = { path = "crates/occluview-core" }
+occluview-formats = { path = "crates/occluview-formats" }
+occluview-render  = { path = "crates/occluview-render" }
+occluview-shell   = { path = "crates/occluview-shell" }
+
+# Math / numerics.
+glam    = "0.29"            # permissive (MIT OR Apache-2.0)
+bytemuck = { version = "1.18", features = ["derive"] }
+
+# Parallelism / async.
+rayon   = "1.10"
+
+# Error handling.
+thiserror = "1.0"
+anyhow    = "1.0"           # binaries only (AGENTS.md §4 / ENGINEERING.md §3)
+
+# Logging.
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# GPU / rendering.
+wgpu = "22.0"               # pinned; bumping is a PR + changelog entry (ADR-0002)
+
+# Windowing / GUI (ADR-0003).
+egui    = "0.29"
+eframe  = { version = "0.29", default-features = false, features = ["wgpu", "default_fonts"] }
+rfd     = "0.15"            # native file dialogs
+
+# Windows bindings (shell + windowing interop) — windows-rs only.
+# ADR-0005. Target = x86_64-pc-windows-msvc (rust-toolchain.toml).
+target-our-windows = { version = "0", package = "windows", features = [
+    # COM plumbing
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+    # Shell / thumbnail provider
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_Graphics_Imaging",
+    # GDI for HBITMAP interop
+    "Win32_Graphics_Gdi",
+] }
+
+# Format loaders (ADR-0004).
+# cgltf is a single-file C header; we build it via the `cc` crate in
+# occluview-formats/build.rs.
+cc = "1.1"
+
+# Testing.
+proptest = "1.5"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Workspace lints — applied to every crate via `lints.workspace = true`.
+[workspace.lints.rust]
+rust_2018_idioms         = "deny"
+unsafe_op_in_unsafe_fn   = "deny"
+missing_docs             = "warn"
+unused_qualifications    = "warn"
+
+[workspace.lints.clippy]
+pedantic      = "warn"
+all           = "warn"
+# Slop blockers (AGENTS.md §3, ANTI_SLOP.md).
+unwrap_used       = "deny"
+expect_used       = "deny"
+panic             = "deny"
+todo              = "deny"
+unimplemented     = "deny"
+dbg_macro         = "deny"
+print_stdout      = "deny"
+print_stderr      = "deny"
+# Sensible pedantic relaxations (override per-crate with justification).
+module_name_repetitions = "allow"
+must_use_candidate      = "allow"
+needless_pass_by_value  = "allow"
+
+[profile.release]
+# Strongly optimize the viewer and shell DLL.
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+debug = "line-tables-only"   # keep stack traces for crash reports
+
+[profile.bench]
+inherits = "release"
+
+[profile.dev]
+opt-level = 1                # faster dev runs for the wgpu hot path
+debug = 1

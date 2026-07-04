@@ -1,0 +1,25 @@
+# occluview-render — wgpu renderer. Depends on occluview-core only.
+# (ADR-0002). Used by BOTH the live app and the offscreen thumbnail path.
+[package]
+name = "occluview-render"
+description = "wgpu renderer for OccluView: mesh rendering, offscreen thumbnails."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+occluview-core = { workspace = true }
+wgpu           = { workspace = true }
+bytemuck       = { workspace = true }
+thiserror      = { workspace = true }
+tracing        = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

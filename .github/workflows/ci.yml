@@ -1,0 +1,128 @@
+name: CI
+
+# CI is the enforcer of AGENTS.md. Every check here maps to a rule.
+# A red main is an incident (AGENTS.md §0.10) — keep it green at all costs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+  # Don't let a stray println slow the build or pull optional features.
+  CARGO_NET_RETRY: 3
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: rustfmt check
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: clippy --workspace --all-targets
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: test (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo test --workspace
+        run: cargo test --workspace --all-targets --no-fail-fast
+
+  docs:
+    name: cargo doc
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo doc (no warnings)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --all-features
+
+  deny:
+    name: cargo deny (licenses + advisories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          arguments: --workspace
+
+  file-size-lint:
+    # Enforces the 500-LOC rule from AGENTS.md §3.
+    name: file-size lint (<=500 LOC)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check no .rs file exceeds 500 lines
+        run: |
+          set -euo pipefail
+          offenders=""
+          while IFS= read -r f; do
+            loc=$(wc -l < "$f")
+            if [ "$loc" -gt 500 ]; then
+              offenders="$offenders\n$f: $loc lines"
+            fi
+          done < <(find crates -name '*.rs')
+          if [ -n "$offenders" ]; then
+            echo -e "Files exceeding the 500-line cap (AGENTS.md §3):$offenders" >&2
+            exit 1
+          fi
+
+  conventional-commits:
+    name: commit message lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: webiny/action-conventional-commits@v1.3.0
+
+  dco:
+    name: DCO sign-off
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify every commit is signed off (DCO)
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          missing=0
+          while IFS= read -r sha; do
+            if ! git log -1 --format='%B' "$sha" | grep -q '^Signed-off-by:'; then
+              echo "Commit $sha is missing a Signed-off-by line (DCO)."
+              missing=1
+            fi
+          done < <(git rev-list "$base..$head")
+          exit "$missing"

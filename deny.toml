@@ -1,0 +1,74 @@
+# cargo-deny configuration — license + advisory + ban checks (AGENTS.md §8).
+# Run locally: `cargo deny check`. CI runs the same.
+
+[graph]
+all-features = true
+
+[advisories]
+# Fail the build on any known vulnerability with a fix available.
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "deny"
+notice = "warn"
+# Allow these specific advisories with a reason (none by default).
+ignore = []
+
+[licenses]
+# Allow-list (AGENTS.md §8). Anything else is blocked.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "MPL-2.0",
+    "Zlib",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "Unlicense",
+    "CC0-1.0",
+    "OpenSSL",
+]
+# Block copyleft and "no commercial" / "not for evil" licenses explicitly.
+deny = [
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL-3.0",
+    "LGPL-2.0",
+    "LGPL-2.1",
+    "LGPL-3.0",
+    "SSPL-1.0",
+    "EUPL-1.1",
+    "CC-BY-NC-3.0",
+    "CC-BY-NC-ND-3.0",
+    "CC-BY-NC-SA-3.0",
+]
+# Confidence threshold for license detection.
+confidence-threshold = 0.93
+
+[[licenses.clarify]]
+# wgpu / wgpu-hal sometimes need explicit clarification.
+name = "wgpu"
+version = "*"
+expression = "MIT OR Apache-2.0"
+license-files = []
+
+[bans]
+# One version per crate by default — duplicates must be justified.
+multiple-versions = "warn"
+# Deny wildcard dependencies (we want reproducible builds).
+wildcards = "deny"
+highlight = "all"
+# Allow specific known duplicates (none by default — keep this list empty).
+allow = []
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+# Only crates.io is allowed by default.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

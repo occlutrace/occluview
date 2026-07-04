@@ -1,0 +1,7 @@
+# Pinned toolchain for reproducible builds across all contributors and CI.
+# Bumping this is a PR with a CHANGELOG note and a green CI on all platforms.
+[toolchain]
+channel = "1.81.0"
+components = ["rustfmt", "clippy", "rust-src"]
+profile = "minimal"
+targets = ["x86_64-pc-windows-msvc"]

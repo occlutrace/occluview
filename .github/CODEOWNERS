@@ -1,0 +1,29 @@
+# CODEOWNERS — review routing (AGENTS.md §9.12).
+# Last matching pattern wins. Lines starting with # are comments.
+
+# Default owner for anything not matched below.
+*                                              @occlutrace/maintainers
+
+# Architecture & governance — two approvals for changes here (AGENTS.md §7).
+/AGENTS.md                                     @occlutrace/maintainers @occlutrace/arch
+/docs/ARCHITECTURE.md                          @occlutrace/arch
+/docs/adr/                                     @occlutrace/arch
+/CONTRIBUTING.md                               @occlutrace/maintainers
+/SECURITY.md                                   @occlutrace/security
+/TRADEMARK.md                                  @occlutrace/legal
+/LICENSE                                       @occlutrace/legal
+/NOTICE                                        @occlutrace/legal
+
+# Per-crate owners.
+/crates/occluview-core/                        @occlutrace/core
+/crates/occluview-formats/                     @occlutrace/formats
+/crates/occluview-render/                      @occluview/render
+/crates/occluview-shell/                       @occlutrace/shell
+/crates/occluview-app/                         @occluview/app
+/crates/occluview-cli/                         @occluview/app
+
+# Security-sensitive paths.
+/crates/occluview-formats/src/                 @occlutrace/security @occlutrace/formats
+/Cargo.toml                                    @occlutrace/arch
+/deny.toml                                     @occlutrace/security
+/.github/workflows/                            @occlutrace/ci

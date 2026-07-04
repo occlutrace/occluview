@@ -1,0 +1,29 @@
+name: Perf
+
+# Performance gates (AGENTS.md §3, ENGINEERING.md §6). Runs the criterion benches
+# and asserts the cold-start / idle-RSS / open-50MB-STL / thumbnail-256 budgets.
+# A >10% regression on main fails the job.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bench:
+    name: criterion benches
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build benches
+        run: cargo build --benches --release
+      - name: Run benches (placeholder)
+        # Real bench targets land with the renderer; the job exists from day one
+        # so the budget is enforced the moment benches are added.
+        run: echo "perf benches will run here once occluview-render exposes them"

@@ -1,0 +1,47 @@
+# occluview-shell — Windows COM shell extension (thumbnail provider).
+# Depends on occluview-core + occluview-render. (ADR-0005)
+#
+# Builds as a `cdylib` (the COM DLL) AND a `rlib` (so tests + the app can call
+# into the same Rust logic). Target: x86_64-pc-windows-msvc.
+[package]
+name = "occluview-shell"
+description = "Windows COM shell extension for OccluView — out-of-process 3D thumbnails."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+occluview-core    = { workspace = true }
+occluview-render  = { workspace = true }
+occluview-formats = { workspace = true }
+tracing           = { workspace = true }
+thiserror         = { workspace = true }
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_Graphics_Imaging",
+    "Win32_Graphics_Gdi",
+    "implement",
+    "interface",
+]
+
+[dev-dependencies]
+proptest = { workspace = true }

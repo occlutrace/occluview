@@ -1,0 +1,31 @@
+# Dependabot — keeps Cargo deps + GitHub Actions current.
+# Each bump is a PR; AGENTS.md §9.6 applies (no casual bumps).
+# Bumps that change behavior get an ADR + a changelog entry.
+
+version: 2
+updates:
+  # Cargo dependencies
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels: ["deps", "cargo"]
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      # Patch and minor bumps ride together to reduce PR noise.
+      patch-and-minor:
+        update-types:
+          - "patch"
+          - "minor"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels: ["deps", "ci"]
+    commit-message:
+      prefix: "ci(deps)"

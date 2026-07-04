@@ -1,0 +1,29 @@
+# occluview-formats — file format readers/writers.
+# Layering: depends on occluview-core only. (AGENTS.md §0.4)
+[package]
+name = "occluview-formats"
+description = "3D file format readers for OccluView: STL, PLY, OBJ, glTF, 3MF."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+occluview-core = { workspace = true }
+thiserror      = { workspace = true }
+tracing        = { workspace = true }
+bytemuck       = { workspace = true }
+rayon          = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+# NOTE: glTF loader (cgltf) and 3MF loader (lib3mf FFI) are added in later PRs
+# per ADR-0004. The v1 reader set is being implemented incrementally; each loader
+# ships with property tests + fuzz targets (docs/TESTING.md).
