@@ -20,6 +20,7 @@ wgpu           = { workspace = true }
 bytemuck       = { workspace = true }
 thiserror      = { workspace = true }
 tracing        = { workspace = true }
+glam           = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

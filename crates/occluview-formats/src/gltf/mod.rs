@@ -116,7 +116,7 @@ fn emit_primitive(
         .transpose()?;
 
     let vertex_count = positions.len();
-    let base = builder_push_vertices(&positions, &normals, &colors, builder);
+    let base = builder_push_vertices(&positions, normals.as_deref(), colors.as_deref(), builder);
 
     if let Some(idx_acc) = prim.indices {
         let indices = read_indices(doc, idx_acc, bin_chunk)?;
@@ -144,8 +144,8 @@ fn emit_primitive(
 /// handle of the first pushed vertex, used as the index base.
 fn builder_push_vertices(
     positions: &[[f32; 3]],
-    normals: &Option<Vec<[f32; 3]>>,
-    colors: &Option<Vec<[u8; 4]>>,
+    normals: Option<&[[f32; 3]]>,
+    colors: Option<&[[u8; 4]]>,
     builder: &mut MeshBuilder,
 ) -> u32 {
     let mut first = 0u32;

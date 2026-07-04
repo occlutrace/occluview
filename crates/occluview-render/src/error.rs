@@ -9,18 +9,19 @@ pub enum RenderError {
     #[error("wgpu surface error: {0}")]
     Surface(String),
 
-    /// No suitable GPU adapter was found, and the software fallback is disabled.
-    #[error("no GPU adapter available and software fallback disabled")]
+    /// No suitable GPU adapter was found, and the software fallback is
+    /// unavailable.
+    #[error("no GPU adapter available and software fallback unavailable")]
     NoAdapter,
 
     /// A shader failed to compile (WGSL parse/validation error).
     #[error("shader compilation failed: {0}")]
     Shader(String),
 
-    /// The offscreen render exceeded its time budget (`docs/SHELL_INTEGRATION.md`).
+    /// The offscreen render exceeded its time budget.
     #[error("render timed out after {ms} ms")]
     Timeout {
-        /// The elapsed milliseconds when the watchdog fired.
+        /// Elapsed milliseconds when the watchdog fired.
         ms: u32,
     },
 }
