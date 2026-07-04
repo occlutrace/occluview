@@ -1,8 +1,19 @@
-//! `occluview-cli` — headless CLI.
+//! `occluview-cli` - headless CLI.
 //!
 //! Subcommands (planned):
-//!   - `thumbnail <file> -o out.png --size 256`  — render a thumbnail, same path
+//!   - `thumbnail <file> -o out.png --size 256`  - render a thumbnail, same path
 //!     as the Explorer shell extension (`occluview-shell`). Useful for debugging
+//!     the shell path *without* Explorer.
+//!   - `info <file>`         - print format, vertex/triangle counts, bbox dims.
+//!   - `convert <in> <out>`  - re-encode between supported formats (later).
+//!
+//! ## Status
+//!
+//! Foundation only: argument parsing and a friendly "not implemented" for each
+//! subcommand. Real implementations land alongside the loaders/renderer.
+
+// CLI tool: stdout/stderr is the entire point.
+#![allow(clippy::print_stdout, clippy::print_stderr)]
 //!     the shell path *without* Explorer.
 //!   - `info <file>`         — print format, vertex/triangle counts, bbox dims.
 //!   - `convert <in> <out>`  — re-encode between supported formats (later).
@@ -35,7 +46,8 @@ fn main() -> Result<()> {
         "thumbnail" => {
             let file: PathBuf = args
                 .next()
-                .ok_or_else(|| anyhow::anyhow!("thumbnail: missing <file> argument"))?;
+                .ok_or_else(|| anyhow::anyhow!("thumbnail: missing <file> argument"))?
+                .into();
             tracing::info!(?file, "thumbnail subcommand");
             eprintln!(
                 "occluview-cli thumbnail: not yet implemented ({}) — see ROADMAP.md",
@@ -45,7 +57,8 @@ fn main() -> Result<()> {
         "info" => {
             let file: PathBuf = args
                 .next()
-                .ok_or_else(|| anyhow::anyhow!("info: missing <file> argument"))?;
+                .ok_or_else(|| anyhow::anyhow!("info: missing <file> argument"))?
+                .into();
             tracing::info!(?file, "info subcommand");
             eprintln!(
                 "occluview-cli info: not yet implemented ({}) — see ROADMAP.md",

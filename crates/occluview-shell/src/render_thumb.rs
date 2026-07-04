@@ -1,17 +1,24 @@
 //! The safe, Windows-agnostic core of thumbnail generation.
 //!
 //! The COM class (to be implemented in a follow-up PR) calls into
-//! [`render_thumbnail`] — this function does all the work and is unit-testable
-//! without Windows. It loads the file via `occluview-formats`, renders an
-//! offscreen frame via `occluview-render`, and returns RGBA pixels.
+//! [`render_thumbnail`] - this function does all the work and is unit-testable
+//! without Windows. It loads the file via `occluview-formats`, frames the
+//! camera with the dental occlusal default, and renders an offscreen frame via
+//! `occluview-render`.
 
 use crate::ShellError;
-use occluview_formats::{dispatch_by_extension, FormatError};
-use occluview_render::{Offscreen, ThumbnailSpec};
+use glam::{Mat4, Vec3};
+use occluview_core::Camera;
+use occluview_formats::dispatch_by_extension;
+use occluview_render::{GpuCamera, Offscreen, ThumbnailSpec};
 
 /// Load `bytes` (a file with the given lowercase extension, no dot) and render
 /// a thumbnail per `spec`. Returns RGBA8 pixels in row-major order, length
-/// `spec.size_px * spec.size_px * 4`.
+/// `spec.size_px * spec.size_px * 4`, top-to-bottom.
+///
+/// Blocking: runs the offscreen render to completion on the calling thread.
+/// The COM stub invokes this on a worker thread (ADR-0005 addendum) under a
+/// Job Object with a watchdog.
 ///
 /// # Errors
 /// See [`ShellError`]. The COM layer translates any error into a branded
@@ -21,14 +28,15 @@ pub fn render_thumbnail(
     bytes: &[u8],
     spec: ThumbnailSpec,
 ) -> Result<Vec<u8>, ShellError> {
-    let mesh = dispatch_by_extension(extension, bytes).map_err(|e| match e {
-        // Re-wrap so the shell layer owns the error type, not the format layer.
-        FormatError::Unsupported { .. } => FormatError::Unsupported {
-            extension: extension.to_string(),
-        },
-        other => other,
-    })?;
-    let pixels = Offscreen.render(&mesh, spec)?;
+    let mut mesh = dispatch_by_extension(extension, bytes)?;
+    let bbox = mesh.bbox();
+    let cam = Camera::default().frame_occlusal(bbox, 45.0_f32.to_radians());
+    let view = Mat4::look_at_rh(cam.eye(), cam.target, Vec3::Y);
+    let proj = Mat4::perspective_rh(cam.fovy, 1.0, cam.near, cam.far);
+    let gpu_cam = GpuCamera::new(view, proj, Vec3::new(0.4, 0.8, 0.5), cam.eye());
+
+    let offscreen = pollster::block_on(Offscreen::new())?;
+    let pixels = pollster::block_on(offscreen.render(&mesh, &gpu_cam, spec))?;
     Ok(pixels)
 }
 
@@ -45,11 +53,9 @@ mod tests {
     }
 
     #[test]
-    fn stub_render_surfaces_as_render_error() {
-        // Even a "supported" extension returns an error today because no loader
-        // is implemented yet — the shell layer must translate that to a
-        // placeholder, never propagate a crash.
-        let res = render_thumbnail("stl", &[0u8; 84], ThumbnailSpec::default());
-        assert!(res.is_err());
+    fn malformed_stl_returns_format_error_without_panic() {
+        // Truncated STL header (fewer than 84 bytes) -> FormatError, not panic.
+        let res = render_thumbnail("stl", &[0u8; 10], ThumbnailSpec::default());
+        assert!(matches!(res, Err(ShellError::Format(_))));
     }
 }

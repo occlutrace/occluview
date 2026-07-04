@@ -21,6 +21,17 @@ members = [
     "crates/occluview-app",
     "crates/occluview-cli",
 ]
+# `cargo check/test` without -p uses default-members; restrict to the
+# cross-platform crates so Linux/macOS dev machines don't try to build the
+# Windows-only shell/app crates (ADR-0001: Windows-first). On Windows, build
+# the full workspace explicitly:
+#   cargo check -p occluview-app -p occluview-shell
+default-members = [
+    "crates/occluview-core",
+    "crates/occluview-formats",
+    "crates/occluview-render",
+    "crates/occluview-cli",
+]
 
 # Workspace-wide package metadata. Crates override only what they need.
 [workspace.package]
@@ -57,6 +68,9 @@ anyhow    = "1.0"           # binaries only (AGENTS.md §4 / ENGINEERING.md §3)
 serde      = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# Async runtime for offscreen render in the GUI app.
+pollster   = "0.4"
+
 # Logging.
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -67,7 +81,7 @@ wgpu = "22.0"               # pinned; bumping is a PR + changelog entry (ADR-000
 # Windowing / GUI (ADR-0003).
 egui    = "0.29"
 eframe  = { version = "0.29", default-features = false, features = ["wgpu", "default_fonts"] }
-rfd     = "0.15"            # native file dialogs
+rfd     = { version = "0.14", default-features = false, features = ["xdg-portal"] }
 
 # Windows bindings (shell + windowing interop) — windows-rs only.
 # ADR-0005. Target = x86_64-pc-windows-msvc (rust-toolchain.toml).

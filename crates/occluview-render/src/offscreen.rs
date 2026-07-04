@@ -237,5 +237,5 @@ fn extent(size: u32) -> wgpu::Extent3d {
 /// wgpu requires buffer rows to be aligned to 256 bytes. RGBA8 = 4 bytes/pixel.
 fn padded_bytes_per_row(width: u32) -> u32 {
     let unpadded = width * 4;
-    ((unpadded + 255) / 256) * 256
+    unpadded.div_ceil(256) * 256
 }
