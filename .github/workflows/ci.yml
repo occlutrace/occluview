@@ -62,6 +62,20 @@ jobs:
           cargo check -p occluview-core -p occluview-formats -p occluview-render \
             --target x86_64-pc-windows-gnu
 
+  windows-only:
+    # Build the Windows-only crates (shell, app) on a real Windows host.
+    # These are cfg(windows)-gated and excluded from default-members, so the
+    # other jobs don't cover them. Cross-compile (above) catches type bugs;
+    # this job catches link/build issues that only show on MSVC.
+    name: build (windows-only crates)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check (shell + app)
+        run: cargo check -p occluview-shell -p occluview-app
+
   test:
     name: test (windows)
     runs-on: windows-latest
