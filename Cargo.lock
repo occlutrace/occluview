@@ -2081,7 +2081,9 @@ version = "0.0.1"
 dependencies = [
  "bytemuck",
  "glam",
+ "image",
  "occluview-core",
+ "pollster 0.4.0",
  "proptest",
  "thiserror 1.0.69",
  "tracing",

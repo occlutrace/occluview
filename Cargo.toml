@@ -71,6 +71,9 @@ serde_json = "1.0"
 # Async runtime for offscreen render in the GUI app.
 pollster   = "0.4"
 
+# Image encode/decode for golden-image regression tests.
+image      = { version = "0.25", default-features = false, features = ["png"] }
+
 # Logging.
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
