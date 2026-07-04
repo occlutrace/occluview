@@ -11,7 +11,7 @@ Loader decisions are in [ADR-0004](adr/0004-per-format-loaders-not-assimp.md).
 | PLY    | `.ply`              | ✅     | ✅     | ✅            | —         | sometimes      | custom Rust reader     | P0       |
 | OBJ    | `.obj` (+`.mtl`)    | —      | ✅     | via mtl/vertex| ✅        | no             | `fast_obj` or custom   | P0       |
 | glTF   | `.gltf` `.glb`      | ✅     | ✅     | ✅            | ✅ (PBR)  | no             | `cgltf`                | P0       |
-| 3MF    | `.3mf`              | ✅     | —     | ✅            | ✅        | yes            | lib3mf via FFI         | P1       |
+| 3MF    | `.3mf`              | ✅     | —     | ✅            | ✅        | yes            | deferred (see below)   | P1       |
 
 Legend: P0 = ships in v1.0; P1 = ships in v1.x; — = not applicable.
 

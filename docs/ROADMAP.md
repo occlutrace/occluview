@@ -30,7 +30,11 @@ The smallest honest release that delivers the promise.
 
 ## v1.x — Depth
 
-- 3MF support (lib3mf FFI).
+- 3MF support. **Deferred from v1.0**: 3MF is a 3D-print handoff format, not an
+  intraoral-scan format (0 files in the OccluTrace corpus). When real user
+  demand appears, implement natively in Rust (`zip` + `quick-xml`, both pure
+  Rust, MIT/Apache-2.0) rather than via lib3mf FFI, to keep the formats crate
+  `#![forbid(unsafe_code)]` (same rationale as ADR-0010 for glTF).
 - Measurement tools (point-to-point, in mm — visual aid, not calibrated).
 - Cross-section plane.
 - Side-by-side / overlay compare of two meshes.
