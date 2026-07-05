@@ -71,8 +71,9 @@ serde_json = "1.0"
 # Async runtime for offscreen render in the GUI app.
 pollster   = "0.4"
 
-# Image encode/decode for golden-image regression tests.
-image      = { version = "0.25", default-features = false, features = ["png"] }
+# Image encode/decode: PNG for golden tests + thumbnail output, JPEG for glTF
+# texture images (dental GLBs commonly embed JPEG textures).
+image      = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 # Memory-mapped file loading for large meshes (ADR-0004 streaming path).
 memmap2    = "0.9"

@@ -21,7 +21,7 @@ pub mod json;
 
 use crate::error::FormatError;
 use glam::Vec3;
-use occluview_core::{Mesh, MeshBuilder, Vertex};
+use occluview_core::{Mesh, MeshBuilder, MeshTexture, Vertex};
 
 /// Read a GLB from raw bytes into a [`Mesh`].
 ///
@@ -54,10 +54,92 @@ fn read_doc(doc: &json::GltfDoc, bin_chunk: &[u8]) -> Result<Mesh, FormatError> 
         .get(scene_idx)
         .ok_or_else(|| malformed("scene out of range"))?;
     let mut builder = MeshBuilder::new().with_name("glTF");
+    // Track the first primitive's material so we can resolve a texture after
+    // the build (the builder only handles geometry).
+    let mut first_material: Option<usize> = None;
     for &node_idx in &scene.nodes {
         walk_node(doc, node_idx, bin_chunk, &mut builder)?;
+        if first_material.is_none() {
+            first_material = first_primitive_material(doc, node_idx);
+        }
     }
-    builder.build().map_err(FormatError::Core)
+    let mut mesh = builder.build().map_err(FormatError::Core)?;
+    // If the first primitive references a textured material, decode + attach.
+    if let Some(mat_idx) = first_material {
+        if let Some(tex) = resolve_material_texture(doc, mat_idx, bin_chunk)? {
+            mesh.set_texture(tex);
+        }
+    }
+    Ok(mesh)
+}
+
+/// Return the material index of the first primitive of the mesh referenced by
+/// `node_idx`, if any.
+fn first_primitive_material(doc: &json::GltfDoc, node_idx: usize) -> Option<usize> {
+    let node = doc.nodes.get(node_idx)?;
+    let mesh = doc.meshes.get(node.mesh?)?;
+    mesh.primitives.first()?.material
+}
+
+/// Resolve a material's base-color texture to a decoded [`MeshTexture`].
+///
+/// glTF material → `pbrMetallicRoughness.baseColorTexture.index` →
+/// `textures[idx].source` → `images[source].bufferView` → decode PNG/JPEG.
+///
+/// Returns `None` if the material has no base-color texture, or if the texture
+/// chain references an external URI (out of scope for v1).
+fn resolve_material_texture(
+    doc: &json::GltfDoc,
+    material_idx: usize,
+    bin_chunk: &[u8],
+) -> Result<Option<MeshTexture>, FormatError> {
+    let material = doc
+        .materials
+        .get(material_idx)
+        .ok_or_else(|| malformed("material out of range"))?;
+    // materials are opaque serde_json::Value — dig into pbrMetallicRoughness.
+    let pbr = material
+        .get("pbrMetallicRoughness")
+        .ok_or_else(|| malformed("material has no pbrMetallicRoughness"))?;
+    let Some(base_color_tex) = pbr.get("baseColorTexture") else {
+        return Ok(None); // no texture on this material
+    };
+    let tex_idx = base_color_tex
+        .get("index")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| malformed("baseColorTexture has no index"))? as usize;
+    let texture = doc
+        .textures
+        .get(tex_idx)
+        .ok_or_else(|| malformed("texture out of range"))?;
+    let source = texture
+        .source
+        .ok_or_else(|| malformed("texture has no source"))?;
+    let image = doc
+        .images
+        .get(source)
+        .ok_or_else(|| malformed("image out of range"))?;
+    // Only bufferView-embedded images are supported (external URI rejected).
+    let bv_idx = image
+        .buffer_view
+        .ok_or_else(|| malformed("image has no bufferView (external URI unsupported)"))?;
+    let bv = doc
+        .buffer_views
+        .get(bv_idx)
+        .ok_or_else(|| malformed("image bufferView out of range"))?;
+    let offset = bv.byte_offset.unwrap_or(0);
+    let end = offset + bv.byte_length as usize;
+    let img_bytes = bin_chunk.get(offset..end).ok_or(FormatError::Truncated {
+        format: "glTF",
+        expected: end,
+        got: bin_chunk.len(),
+    })?;
+    // Decode via the `image` crate (PNG or JPEG).
+    let decoded = image::load_from_memory(img_bytes)
+        .map_err(|e| malformed(&format!("image decode failed: {e}")))?;
+    let rgba = decoded.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    Ok(Some(MeshTexture::new(w, h, rgba.into_raw())))
 }
 
 fn walk_node(
@@ -114,9 +196,20 @@ fn emit_primitive(
         .color_0
         .map(|i| read_color_f32(doc, i, bin_chunk))
         .transpose()?;
+    let uvs = prim
+        .attributes
+        .texcoord_0
+        .map(|i| read_texcoord(doc, i, bin_chunk))
+        .transpose()?;
 
     let vertex_count = positions.len();
-    let base = builder_push_vertices(&positions, normals.as_deref(), colors.as_deref(), builder);
+    let base = builder_push_vertices(
+        &positions,
+        normals.as_deref(),
+        colors.as_deref(),
+        uvs.as_deref(),
+        builder,
+    );
 
     if let Some(idx_acc) = prim.indices {
         let indices = read_indices(doc, idx_acc, bin_chunk)?;
@@ -140,12 +233,13 @@ fn emit_primitive(
     Ok(())
 }
 
-/// Push `positions` (with optional matching normals/colors) and return the
+/// Push `positions` (with optional matching normals/colors/uvs) and return the
 /// handle of the first pushed vertex, used as the index base.
 fn builder_push_vertices(
     positions: &[[f32; 3]],
     normals: Option<&[[f32; 3]]>,
     colors: Option<&[[u8; 4]]>,
+    uvs: Option<&[[f32; 2]]>,
     builder: &mut MeshBuilder,
 ) -> u32 {
     let mut first = 0u32;
@@ -159,6 +253,11 @@ fn builder_push_vertices(
         if let Some(cs) = colors {
             if i < cs.len() {
                 v = v.with_color(cs[i]);
+            }
+        }
+        if let Some(uvs) = uvs {
+            if i < uvs.len() {
+                v = v.with_uv(uvs[i]);
             }
         }
         let h = builder.push_vertex(v);
@@ -198,6 +297,87 @@ fn read_f32_vec3(
         out.push([x, y, z]);
     }
     Ok(out)
+}
+
+/// Read a `TEXCOORD_0` accessor as `Vec<[f32; 2]>`. Supports FLOAT (5126)
+/// and normalized `UNSIGNED_BYTE` (5121) / `UNSIGNED_SHORT` (5123) VEC2.
+fn read_texcoord(
+    doc: &json::GltfDoc,
+    acc_idx: usize,
+    bin_chunk: &[u8],
+) -> Result<Vec<[f32; 2]>, FormatError> {
+    let acc = doc
+        .accessors
+        .get(acc_idx)
+        .ok_or_else(|| malformed("accessor out of range"))?;
+    if acc.type_ != "VEC2" {
+        return Err(malformed(&format!(
+            "VEC2 TEXCOORD_0 required, got type {}",
+            acc.type_
+        )));
+    }
+    let normalized = acc.normalized.unwrap_or(false);
+    match acc.component_type {
+        5126 => {
+            // FLOAT VEC2.
+            let bytes = read_accessor_bytes(doc, acc_idx, 8, bin_chunk)?;
+            let mut out = Vec::with_capacity(acc.count);
+            for i in 0..acc.count {
+                let off = i * 8;
+                let u = f32_at(bytes.get(off..off + 4).unwrap_or(&[0; 4]));
+                let v = f32_at(bytes.get(off + 4..off + 8).unwrap_or(&[0; 4]));
+                out.push([u, v]);
+            }
+            Ok(out)
+        }
+        5121 => {
+            // UNSIGNED_BYTE VEC2, optionally normalized.
+            let bytes = read_accessor_bytes(doc, acc_idx, 2, bin_chunk)?;
+            let mut out = Vec::with_capacity(acc.count);
+            for i in 0..acc.count {
+                let off = i * 2;
+                let u = bytes.get(off).copied().unwrap_or(0);
+                let v = bytes.get(off + 1).copied().unwrap_or(0);
+                let uf = if normalized {
+                    f32::from(u) / 255.0
+                } else {
+                    f32::from(u)
+                };
+                let vf = if normalized {
+                    f32::from(v) / 255.0
+                } else {
+                    f32::from(v)
+                };
+                out.push([uf, vf]);
+            }
+            Ok(out)
+        }
+        5123 => {
+            // UNSIGNED_SHORT VEC2, optionally normalized.
+            let bytes = read_accessor_bytes(doc, acc_idx, 4, bin_chunk)?;
+            let mut out = Vec::with_capacity(acc.count);
+            for i in 0..acc.count {
+                let off = i * 4;
+                let u = u16_at(bytes.get(off..off + 2).unwrap_or(&[0; 2]));
+                let v = u16_at(bytes.get(off + 2..off + 4).unwrap_or(&[0; 2]));
+                let uf = if normalized {
+                    f32::from(u) / 65535.0
+                } else {
+                    f32::from(u)
+                };
+                let vf = if normalized {
+                    f32::from(v) / 65535.0
+                } else {
+                    f32::from(v)
+                };
+                out.push([uf, vf]);
+            }
+            Ok(out)
+        }
+        other => Err(malformed(&format!(
+            "TEXCOORD_0 component_type {other} not supported (use FLOAT/UBYTE/USHORT)"
+        ))),
+    }
 }
 
 /// Read a `COLOR_0` accessor as `Vec<[u8; 4]>` (RGBA, normalized to `0..=255`).
@@ -502,5 +682,105 @@ mod tests {
         let bytes = glb::build_glb(json, &bin);
         let mesh = read(&bytes).expect("valid GLB");
         assert_eq!(mesh.indices(), &[1, 4, 2, 5, 0, 3]);
+    }
+
+    /// End-to-end: a GLB with TEXCOORD_0 + a material base-color texture
+    /// (PNG embedded in a bufferView) round-trips UVs and decodes the texture.
+    #[test]
+    fn textured_glb_round_trips_uvs_and_texture() {
+        // Encode a 2×2 red PNG as the texture image bytes.
+        let png_bytes: Vec<u8> = {
+            let img = image::RgbaImage::from_raw(
+                2,
+                2,
+                vec![
+                    255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255,
+                ],
+            )
+            .expect("image dims");
+            let mut buf = std::io::Cursor::new(Vec::new());
+            image::DynamicImage::ImageRgba8(img)
+                .write_to(&mut buf, image::ImageFormat::Png)
+                .expect("encode png");
+            buf.into_inner()
+        };
+        let png_len = png_bytes.len();
+
+        // BIN layout:
+        //   [0..72)      positions (6 verts × 12 bytes = 72, values irrelevant)
+        //   [72..120)    uvs (6 verts × 8 bytes = 48)
+        //   [120..132)   indices (6 × u16 = 12)
+        //   [132..132+png_len)  PNG image bytes
+        let uv_start = 72usize;
+        let idx_start = uv_start + 48;
+        let img_start = idx_start + 12;
+        let total = img_start + png_len;
+
+        let json = format!(
+            r#"{{"asset":{{"version":"2.0"}},
+"scenes":[{{"nodes":[0]}}],"nodes":[{{"mesh":0}}],
+"meshes":[{{"primitives":[{{"attributes":{{"POSITION":0,"TEXCOORD_0":1}},"indices":2,"material":0}}]}}],
+"materials":[{{"pbrMetallicRoughness":{{"baseColorTexture":{{"index":0}}}}}}],
+"textures":[{{"source":0}}],
+"images":[{{"bufferView":3,"mimeType":"image/png"}}],
+"accessors":[{{"bufferView":0,"count":6,"type":"VEC3","componentType":5126}},
+             {{"bufferView":1,"count":6,"type":"VEC2","componentType":5126}},
+             {{"bufferView":2,"count":6,"type":"SCALAR","componentType":5123}}],
+"bufferViews":[{{"buffer":0,"byteLength":72}},
+               {{"buffer":0,"byteOffset":{uv_start},"byteLength":48}},
+               {{"buffer":0,"byteOffset":{idx_start},"byteLength":12}},
+               {{"buffer":0,"byteOffset":{img_start},"byteLength":{png_len}}}],
+"buffers":[{{"byteLength":{total}}}]}}"#
+        );
+
+        let mut bin = Vec::with_capacity(total);
+        // 6 positions (zeros).
+        bin.extend(std::iter::repeat(0u8).take(72));
+        // 6 UVs: (0,0) (1,0) (0.5,1) (0,0) (1,0) (0.5,1).
+        for &(u, v) in &[
+            (0.0f32, 0.0f32),
+            (1.0, 0.0),
+            (0.5, 1.0),
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (0.5, 1.0),
+        ] {
+            bin.extend_from_slice(&u.to_le_bytes());
+            bin.extend_from_slice(&v.to_le_bytes());
+        }
+        // 6 u16 indices: 0,1,2,3,4,5.
+        for i in [0u16, 1, 2, 3, 4, 5] {
+            bin.extend_from_slice(&i.to_le_bytes());
+        }
+        // PNG bytes.
+        bin.extend_from_slice(&png_bytes);
+        assert_eq!(bin.len(), total);
+
+        let bytes = glb::build_glb(json.as_bytes(), &bin);
+        let mesh = read(&bytes).expect("valid textured GLB");
+
+        // UVs round-tripped.
+        assert!(mesh.has_uvs());
+        let verts = mesh.vertices();
+        assert_eq!(verts.len(), 6);
+        assert_eq!(verts[0].uv, [0.0, 0.0]);
+        assert_eq!(verts[1].uv, [1.0, 0.0]);
+        assert_eq!(verts[2].uv, [0.5, 1.0]);
+
+        // Texture decoded + attached.
+        let tex = mesh.texture().expect("texture should be attached");
+        assert_eq!(tex.width, 2);
+        assert_eq!(tex.height, 2);
+        // Every pixel is red.
+        assert!(tex.rgba.chunks_exact(4).all(|p| p == [255, 0, 0, 255]));
+    }
+
+    /// A GLB with no texture (plain geometry) must not attach a texture.
+    #[test]
+    fn untextured_glb_has_no_texture() {
+        let bytes = one_triangle_glb();
+        let mesh = read(&bytes).expect("valid GLB");
+        assert!(mesh.texture().is_none(), "untextured mesh got a texture");
+        assert!(!mesh.has_uvs(), "mesh with no TEXCOORD_0 reported has_uvs");
     }
 }

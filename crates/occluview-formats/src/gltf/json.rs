@@ -34,6 +34,15 @@ pub struct GltfDoc {
     /// Buffers (only the embedded GLB BIN chunk is honored in v1).
     #[serde(default)]
     pub buffers: Vec<Buffer>,
+    /// Images: decoded texture images (PNG/JPEG embedded in a bufferView).
+    #[serde(default)]
+    pub images: Vec<GltfImage>,
+    /// Textures: pair a sampler + an image source.
+    #[serde(default)]
+    pub textures: Vec<GltfTexture>,
+    /// Samplers: filtering/wrapping parameters.
+    #[serde(default)]
+    pub samplers: Vec<GltfSampler>,
     /// Index of the default scene.
     #[serde(default)]
     pub scene: Option<usize>,
@@ -185,4 +194,50 @@ pub struct Asset {
     /// Optional generator identifier.
     #[serde(default)]
     pub generator: Option<String>,
+}
+
+/// An image source. In v1 only `bufferView`-embedded images (PNG/JPEG) are
+/// decoded; external `uri` images are rejected.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GltfImage {
+    /// Buffer-view index containing the encoded image bytes.
+    #[serde(default)]
+    pub buffer_view: Option<usize>,
+    /// MIME type (`"image/jpeg"` or `"image/png"`).
+    #[serde(default)]
+    pub mime_type: Option<String>,
+    /// External URI (rejected in v1).
+    #[serde(default)]
+    pub uri: Option<String>,
+}
+
+/// A texture: pairs a sampler with an image source.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GltfTexture {
+    /// Sampler index (defaults to a built-in auto sampler if absent).
+    #[serde(default)]
+    pub sampler: Option<usize>,
+    /// Image source index.
+    #[serde(default)]
+    pub source: Option<usize>,
+}
+
+/// A sampler: filtering and wrapping parameters.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GltfSampler {
+    /// Magnification filter (9728 = nearest, 9729 = linear).
+    #[serde(default)]
+    pub mag_filter: Option<u32>,
+    /// Minification filter.
+    #[serde(default)]
+    pub min_filter: Option<u32>,
+    /// Wrap S (10497 = repeat, 33071 = clamp, 33648 = mirror).
+    #[serde(default)]
+    pub wrap_s: Option<u32>,
+    /// Wrap T.
+    #[serde(default)]
+    pub wrap_t: Option<u32>,
 }
