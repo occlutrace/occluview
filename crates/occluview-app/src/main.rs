@@ -102,6 +102,68 @@ mod app_impl {
         mesh: Option<Arc<Mesh>>,
         rendered: Option<RenderedFrame>,
         needs_render: bool,
+        // --- Cut View state ---
+        show_cut_view: bool,
+        cut_state: CutState,
+        cut_texture: Option<egui::TextureHandle>,
+        cut_needs_render: bool,
+    }
+
+    /// The cut-view controls: plane preset, offset, cap settings.
+    #[derive(Clone)]
+    struct CutState {
+        preset: CutPreset,
+        offset_mm: f32,
+        yaw_deg: f32,
+        pitch_deg: f32,
+        show_hollow: bool,
+        cap_color: [f32; 4],
+    }
+
+    impl Default for CutState {
+        fn default() -> Self {
+            Self {
+                preset: CutPreset::Axial,
+                offset_mm: 0.0,
+                yaw_deg: 0.0,
+                pitch_deg: 0.0,
+                show_hollow: false,
+                // Gingiva-warm pink #E84C4B in linear.
+                cap_color: [0.776, 0.182, 0.175, 1.0],
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum CutPreset {
+        Axial,
+        Coronal,
+        Sagittal,
+        Custom,
+    }
+
+    impl CutState {
+        /// Build the ClipPlane from the current preset + offset.
+        fn clip_plane(&self) -> occluview_render::ClipPlane {
+            match self.preset {
+                CutPreset::Axial => occluview_render::ClipPlane::axial(self.offset_mm),
+                CutPreset::Coronal => occluview_render::ClipPlane::coronal(self.offset_mm),
+                CutPreset::Sagittal => occluview_render::ClipPlane::sagittal(self.offset_mm),
+                CutPreset::Custom => occluview_render::ClipPlane::custom(
+                    self.yaw_deg.to_radians(),
+                    self.pitch_deg.to_radians(),
+                    self.offset_mm,
+                ),
+            }
+        }
+
+        fn cut_view_spec(&self) -> occluview_render::CutViewSpec {
+            occluview_render::CutViewSpec {
+                plane: self.clip_plane(),
+                cap_color: self.cap_color,
+                show_hollow: self.show_hollow,
+            }
+        }
     }
 
     struct RenderedFrame {
@@ -124,6 +186,10 @@ mod app_impl {
                 mesh: mesh.map(Arc::new),
                 rendered: None,
                 needs_render: true,
+                show_cut_view: false,
+                cut_state: CutState::default(),
+                cut_texture: None,
+                cut_needs_render: false,
             }
         }
 
@@ -181,6 +247,38 @@ mod app_impl {
             });
             self.needs_render = false;
         }
+
+        /// Re-render only the cut-view image (cheaper than the full render).
+        fn render_cut_now(&mut self, ctx: &egui::Context) {
+            let Some(mesh) = self.mesh.clone() else {
+                return;
+            };
+            let cut = self.cut_state.cut_view_spec();
+            let offscreen = match pollster::block_on(occluview_render::Offscreen::new()) {
+                Ok(o) => o,
+                Err(e) => {
+                    eprintln!("cut-view offscreen init failed: {e}");
+                    return;
+                }
+            };
+            let spec = occluview_render::ThumbnailSpec {
+                size_px: 256,
+                ..Default::default()
+            };
+            let pixels =
+                match pollster::block_on(offscreen.render_cut_view(&mesh, &cut, spec)) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("cut-view render failed: {e}");
+                        return;
+                    }
+                };
+            let color_image =
+                egui::ColorImage::from_rgba_unmultiplied([256, 256], &pixels);
+            let texture = ctx.load_texture("occluview-cut", color_image, egui::TextureOptions::LINEAR);
+            self.cut_texture = Some(texture);
+            self.cut_needs_render = false;
+        }
     }
 
     impl eframe::App for OccluViewApp {
@@ -233,11 +331,23 @@ mod app_impl {
                                 ""
                             }
                         ));
+                        ui.separator();
+                        let prev = self.show_cut_view;
+                        ui.checkbox(&mut self.show_cut_view, "🔪 Cut View");
+                        if self.show_cut_view != prev {
+                            self.cut_needs_render = true;
+                        }
                     } else {
                         ui.label("Drop a .stl/.ply/.obj/.glb file or click Open");
                     }
                 });
             });
+
+            // Re-render the cut view if dirty (independent of main render).
+            if self.cut_needs_render && self.show_cut_view && self.mesh.is_some() {
+                self.render_cut_now(ctx);
+                ctx.request_repaint();
+            }
 
             egui::CentralPanel::default().show(ctx, |ui| {
                 if let Some(r) = &self.rendered {
@@ -250,7 +360,7 @@ mod app_impl {
                     ui.allocate_ui_at_rect(
                         egui::Rect::from_center_size(ui.max_rect().center(), size),
                         |ui| {
-                            ui.image((egui::TextureId::Managed(r.texture.id()), size));
+                            ui.image((r.texture.id(), size));
                         },
                     );
                 } else if self.mesh.is_none() {
@@ -279,6 +389,114 @@ mod app_impl {
                         ));
                     });
                 });
+            }
+
+            // --- Cut View floating window (ADR-0011) ---
+            if self.show_cut_view {
+                let prev_state = self.cut_state.clone();
+                egui::Window::new("🔪 Cut View")
+                    .open(&mut self.show_cut_view)
+                    .resizable(true)
+                    .default_pos([16.0, 100.0])
+                    .default_size([300.0, 420.0])
+                    .show(ctx, |ui| {
+                        // The cut-view render.
+                        if let Some(tex) = &self.cut_texture {
+                            let size = egui::Vec2::new(256.0, 256.0);
+                            ui.horizontal(|ui| {
+                                ui.image((tex.id(), size));
+                            });
+                            ui.separator();
+                        } else if self.mesh.is_some() {
+                            ui.label("Rendering cut view...");
+                        } else {
+                            ui.label("Load a mesh first.");
+                            return;
+                        }
+
+                        // Plane preset dropdown.
+                        ui.horizontal(|ui| {
+                            ui.label("Plane:");
+                            let presets = [
+                                (CutPreset::Axial, "Axial"),
+                                (CutPreset::Coronal, "Coronal"),
+                                (CutPreset::Sagittal, "Sagittal"),
+                                (CutPreset::Custom, "Custom"),
+                            ];
+                            egui::ComboBox::from_label("")
+                                .selected_text(
+                                    presets
+                                        .iter()
+                                        .find(|(p, _)| *p == self.cut_state.preset)
+                                        .map(|(_, n)| *n)
+                                        .unwrap_or("Axial"),
+                                )
+                                .show_ui(ui, |ui| {
+                                    for (p, name) in presets {
+                                        ui.selectable_value(&mut self.cut_state.preset, p, name);
+                                    }
+                                });
+                        });
+
+                        // Offset slider: -50..+50 mm.
+                        ui.horizontal(|ui| {
+                            ui.label("Offset:");
+                            if ui
+                                .add(
+                                    egui::Slider::new(&mut self.cut_state.offset_mm, -50.0..=50.0)
+                                        .suffix(" mm")
+                                        .fixed_decimals(1),
+                                )
+                                .changed()
+                            {
+                                self.cut_needs_render = true;
+                            }
+                        });
+
+                        // Custom yaw/pitch (only when Custom preset).
+                        if self.cut_state.preset == CutPreset::Custom {
+                            ui.horizontal(|ui| {
+                                ui.label("Yaw:");
+                                if ui
+                                    .add(
+                                        egui::Slider::new(&mut self.cut_state.yaw_deg, -90.0..=90.0)
+                                            .suffix("°"),
+                                    )
+                                    .changed()
+                                {
+                                    self.cut_needs_render = true;
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Pitch:");
+                                if ui
+                                    .add(
+                                        egui::Slider::new(&mut self.cut_state.pitch_deg, -90.0..=90.0)
+                                            .suffix("°"),
+                                    )
+                                    .changed()
+                                {
+                                    self.cut_needs_render = true;
+                                }
+                            });
+                        }
+
+                        // Cap settings.
+                        ui.separator();
+                        ui.checkbox(&mut self.cut_state.show_hollow, "Show hollow (no cap)");
+                        if self.cut_state.show_hollow {
+                            self.cut_needs_render = true;
+                        }
+                    });
+                // If any control changed, mark for re-render.
+                if self.cut_state.offset_mm != prev_state.offset_mm
+                    || self.cut_state.preset != prev_state.preset
+                    || self.cut_state.yaw_deg != prev_state.yaw_deg
+                    || self.cut_state.pitch_deg != prev_state.pitch_deg
+                    || self.cut_state.show_hollow != prev_state.show_hollow
+                {
+                    self.cut_needs_render = true;
+                }
             }
         }
     }
