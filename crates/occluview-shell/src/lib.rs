@@ -1,25 +1,32 @@
 //! `occluview-shell` — Windows COM shell extension for OccluView.
 //!
-//! Implements `IThumbnailProvider` (CLSID
-//! `{E357FCCD-A995-4576-B01F-234630154E96}`) as an **out-of-process** COM
-//! server: Windows hosts this DLL in `dllhost.exe`, so a bug or a malicious
-//! file cannot crash `explorer.exe` (ADR-0005, `docs/SHELL_INTEGRATION.md`).
+//! Implements `IThumbnailProvider` as an **out-of-process** COM server: Windows
+//! hosts this DLL in `dllhost.exe`, so a bug or a malicious file cannot crash
+//! `explorer.exe` (ADR-0005 + addendum, `docs/SHELL_INTEGRATION.md`).
 //!
 //! The thumbnail reuses [`occluview_render`] offscreen path, so it is
 //! pixel-identical to the in-app frame — one shader, one camera, one loader.
 //!
 //! ## Status
 //!
-//! Stub. The COM class factory, `DllRegisterServer`/`DllUnregisterServer`, the
-//! `IThumbnailProvider` impl, and the registry script that maps each extension
-//! to our CLSID land in a dedicated PR per the roadmap. The only thing this
-//! crate does today is expose a safe Rust entry point the implementation will
-//! call from behind the COM boundary — so the logic is testable without Windows.
+//! `render_thumbnail` is the platform-agnostic render entry point, fully tested
+//! on Linux. The COM class (`com::ThumbnailProvider`), class factory, and
+//! `DllGetClassObject`/`DllCanUnloadNow` live in `com.rs` and are `cfg(windows)`
+//! — they require the windows toolchain to compile but the rest of the crate
+//! builds on any host. `DllRegisterServer` + the registry script land next.
 
-#![cfg_attr(not(test), forbid(unsafe_code))]
+#![cfg_attr(not(test), deny(unsafe_code))]
+// The COM class (`com.rs`) is `unsafe` by definition (FFI + raw pointers across
+// the COM ABI). Its module-level `#![allow(unsafe_code)]` overrides this gate
+// under `cfg(windows)` only; the platform-agnostic code stays panic-free and
+// unsafe-free. We use `deny` rather than `forbid` precisely so the Windows COM
+// module can relax it — `forbid` is unreleasable.
 
 pub mod error;
 pub mod render_thumb;
+
+#[cfg(windows)]
+pub mod com;
 
 pub use error::ShellError;
 pub use render_thumb::render_thumbnail;
