@@ -47,7 +47,7 @@
     clippy::borrow_as_ptr,
     clippy::unnecessary_cast,
     clippy::doc_markdown,
-    missing_docs,
+    missing_docs
 )]
 
 use crate::com::OCCLUVIEW_THUMBNAIL_CLSID;
@@ -163,7 +163,9 @@ fn own_dll_path() -> HSTRING {
 /// Register `HKCR\CLSID\{clsid}\InprocServer32` with the DLL path + Both.
 fn register_clsid(dll_path: &HSTRING) -> windows::core::Result<()> {
     let clsid_key = HSTRING::from(format!("CLSID\\{OCCLUVIEW_THUMBNAIL_CLSID}"));
-    let inproc_key = HSTRING::from(format!("CLSID\\{OCCLUVIEW_THUMBNAIL_CLSID}\\InprocServer32"));
+    let inproc_key = HSTRING::from(format!(
+        "CLSID\\{OCCLUVIEW_THUMBNAIL_CLSID}\\InprocServer32"
+    ));
 
     // Top-level CLSID entry: friendly name.
     let hk = create_key(&clsid_key)?;
@@ -206,7 +208,10 @@ fn app_exe_path(dll_path: &HSTRING) -> Option<HSTRING> {
     // Find the last path separator (backslash).
     let sep = wide.iter().rposition(|&c| c == u16::from(b'\\'))?;
     let dir = &wide[..=sep];
-    let exe_name: Vec<u16> = APP_EXE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+    let exe_name: Vec<u16> = APP_EXE_NAME
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
     let mut full = dir.to_vec();
     full.extend_from_slice(&exe_name);
     let full = HSTRING::from_wide(&full[..full.len() - 1]).ok()?;
@@ -306,7 +311,10 @@ fn set_string(hkey: HKEY, name: Option<&HSTRING>, value: &HSTRING) -> windows::c
             name_pcwstr,
             0,
             REG_SZ,
-            Some(std::slice::from_raw_parts(bytes.as_ptr() as *const u8, byte_len)),
+            Some(std::slice::from_raw_parts(
+                bytes.as_ptr() as *const u8,
+                byte_len,
+            )),
         )
     };
     if r.0 == ERROR_SUCCESS {

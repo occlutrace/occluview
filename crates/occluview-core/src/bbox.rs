@@ -46,6 +46,20 @@ impl Aabb {
         points.into_iter().fold(Self::EMPTY, Aabb::enclose_point)
     }
 
+    /// Enclose another bounding box, returning the union. Treats an empty
+    /// box as the identity (enclosing `EMPTY` is a no-op).
+    #[inline]
+    #[must_use]
+    pub fn enclose_box(self, other: Aabb) -> Self {
+        if other.is_empty() {
+            return self;
+        }
+        if self.is_empty() {
+            return other;
+        }
+        self.enclose_point(other.min).enclose_point(other.max)
+    }
+
     /// True if no points have been enclosed yet.
     #[inline]
     #[must_use]

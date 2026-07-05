@@ -18,6 +18,12 @@ use glam::Vec3;
 
 /// A vertex. `#[repr(C)]` so it can be uploaded to the GPU verbatim via
 /// `bytemuck::cast_slice`.
+///
+/// Layout (36 bytes, no padding, max align 4):
+/// - `position` `[f32;3]` @ 0
+/// - `normal`   `[f32;3]` @ 12
+/// - `color`    `[u8;4]`  @ 24
+/// - `uv`       `[f32;2]` @ 28
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable, PartialEq)]
 pub struct Vertex {
@@ -27,10 +33,15 @@ pub struct Vertex {
     pub normal: [f32; 3],
     /// sRGBA color, packed 0..=255. `(255, 255, 255, 255)` when color is absent.
     pub color: [u8; 4],
+    /// Texture coordinates (UV). `[0.0, 0.0]` when the vertex has no UV
+    /// (plain STL, untextured PLY, etc.). Loaders set this from `TEXCOORD_0`
+    /// (glTF), `vt` (OBJ), or `texcoord`/`s`/`t` (PLY).
+    pub uv: [f32; 2],
 }
 
 impl Vertex {
-    /// Construct a vertex with position only (normal zeroed, color white).
+    /// Construct a vertex with position only (normal zeroed, color white,
+    /// UV zeroed).
     #[inline]
     #[must_use]
     pub fn at(position: Vec3) -> Self {
@@ -38,10 +49,11 @@ impl Vertex {
             position: position.to_array(),
             normal: [0.0; 3],
             color: [255, 255, 255, 255],
+            uv: [0.0, 0.0],
         }
     }
 
-    /// Construct a vertex with position and normal (color white).
+    /// Construct a vertex with position and normal (color white, UV zeroed).
     #[inline]
     #[must_use]
     pub fn with_normal(mut self, normal: Vec3) -> Self {
@@ -54,6 +66,14 @@ impl Vertex {
     #[must_use]
     pub fn with_color(mut self, rgba: [u8; 4]) -> Self {
         self.color = rgba;
+        self
+    }
+
+    /// Construct a vertex with texture coordinates.
+    #[inline]
+    #[must_use]
+    pub fn with_uv(mut self, uv: [f32; 2]) -> Self {
+        self.uv = uv;
         self
     }
 }
@@ -73,6 +93,49 @@ pub enum MeshKind {
     PointCloud,
 }
 
+/// A CPU-side decoded texture image attached to a mesh (glTF `image` /
+/// `texture`, decoded from PNG/JPEG/etc. by `occluview-formats`). The
+/// renderer uploads this to a `wgpu::Texture` and samples it via the UV
+/// channel of [`Vertex`].
+///
+/// Stored as RGBA8 — the decoder normalizes whatever the source format was.
+#[derive(Clone, Debug)]
+pub struct MeshTexture {
+    /// Pixel width.
+    pub width: u32,
+    /// Pixel height.
+    pub height: u32,
+    /// `width * height * 4` RGBA8 pixels, row-major top-to-bottom.
+    pub rgba: Vec<u8>,
+}
+
+impl MeshTexture {
+    /// Construct from decoded RGBA8 pixels. Asserts the length matches
+    /// `width * height * 4`.
+    #[must_use]
+    pub fn new(width: u32, height: u32, rgba: Vec<u8>) -> Self {
+        debug_assert_eq!(rgba.len(), (width as usize) * (height as usize) * 4);
+        Self {
+            width,
+            height,
+            rgba,
+        }
+    }
+
+    /// A 1×1 opaque white texture — the neutral fallback used when a mesh has
+    /// UVs but no decoded image, or when the renderer needs a bound texture
+    /// for an untextured mesh (so the shader's textureless branch still has a
+    /// valid binding).
+    #[must_use]
+    pub fn white_1x1() -> Self {
+        Self {
+            width: 1,
+            height: 1,
+            rgba: vec![255, 255, 255, 255],
+        }
+    }
+}
+
 /// A triangle mesh, the central geometry type.
 #[derive(Clone, Debug)]
 pub struct Mesh {
@@ -82,8 +145,13 @@ pub struct Mesh {
     indices: Vec<u32>,
     /// True if any vertex carries a non-default color.
     has_vertex_colors: bool,
+    /// True if any vertex carries non-zero UV coordinates.
+    has_uvs: bool,
     /// Whether this is a triangle mesh or a point cloud.
     kind: MeshKind,
+    /// Decoded texture image, if the source file provided one (glTF
+    /// `image`/`texture`). `None` for plain STL / untextured meshes.
+    texture: Option<MeshTexture>,
     /// Cached bounding box, lazily computed.
     cached_bbox: Option<Aabb>,
 }
@@ -100,7 +168,9 @@ impl Mesh {
             vertices: Vec::new(),
             indices: Vec::new(),
             has_vertex_colors: false,
+            has_uvs: false,
             kind: MeshKind::default(),
+            texture: None,
             cached_bbox: None,
         }
     }
@@ -110,12 +180,15 @@ impl Mesh {
     #[must_use]
     pub fn point_cloud(name: Option<String>, vertices: Vec<Vertex>) -> Self {
         let has_vertex_colors = vertices.iter().any(|v| v.color != [255, 255, 255, 255]);
+        let has_uvs = vertices.iter().any(|v| v.uv != [0.0, 0.0]);
         Self {
             name,
             vertices,
             indices: Vec::new(),
             has_vertex_colors,
+            has_uvs,
             kind: MeshKind::PointCloud,
+            texture: None,
             cached_bbox: None,
         }
     }
@@ -144,12 +217,15 @@ impl Mesh {
             });
         }
         let has_vertex_colors = vertices.iter().any(|v| v.color != [255, 255, 255, 255]);
+        let has_uvs = vertices.iter().any(|v| v.uv != [0.0, 0.0]);
         Ok(Self {
             name,
             vertices,
             indices,
             has_vertex_colors,
+            has_uvs,
             kind: MeshKind::TriangleMesh,
+            texture: None,
             cached_bbox: None,
         })
     }
@@ -189,6 +265,28 @@ impl Mesh {
         self.has_vertex_colors
     }
 
+    /// True if any vertex carries non-zero UV coordinates. Loaders set UVs
+    /// from `TEXCOORD_0` (glTF), `vt` (OBJ), or `texcoord` (PLY).
+    #[inline]
+    #[must_use]
+    pub fn has_uvs(&self) -> bool {
+        self.has_uvs
+    }
+
+    /// The decoded texture image, if the source file provided one.
+    #[inline]
+    #[must_use]
+    pub fn texture(&self) -> Option<&MeshTexture> {
+        self.texture.as_ref()
+    }
+
+    /// Attach a decoded texture image (e.g. from a glTF `image`). Used by
+    /// loaders after constructing the mesh.
+    #[inline]
+    pub fn set_texture(&mut self, texture: MeshTexture) {
+        self.texture = Some(texture);
+    }
+
     /// Whether this is a triangle mesh or a point cloud.
     #[inline]
     #[must_use]
@@ -203,6 +301,14 @@ impl Mesh {
         self.kind == MeshKind::PointCloud
     }
 
+    /// Bounding box computed fresh from vertices, **without** touching the
+    /// cache. Used by scene-level composition (which folds many meshes' boxes
+    /// without wanting to mutate each one).
+    #[must_use]
+    pub fn bbox_uncached(&self) -> Aabb {
+        Aabb::enclose_points(self.vertices.iter().map(|v| Vec3::from_array(v.position)))
+    }
+
     /// Axis-aligned bounding box, computed once and cached.
     #[inline]
     #[must_use]
@@ -210,7 +316,7 @@ impl Mesh {
         if let Some(b) = self.cached_bbox {
             return b;
         }
-        let b = Aabb::enclose_points(self.vertices.iter().map(|v| Vec3::from_array(v.position)));
+        let b = self.bbox_uncached();
         self.cached_bbox = Some(b);
         b
     }
@@ -363,5 +469,84 @@ mod tests {
         let mesh = b.build().expect("valid");
         assert_eq!(mesh.name(), Some("built"));
         assert_eq!(mesh.triangle_count(), 1);
+    }
+
+    #[test]
+    fn vertex_uv_is_detected() {
+        let mesh = Mesh::new(
+            None,
+            vec![
+                Vertex::at(Vec3::ZERO).with_uv([0.0, 0.0]),
+                Vertex::at(Vec3::new(1.0, 0.0, 0.0)).with_uv([1.0, 0.0]),
+                Vertex::at(Vec3::new(0.0, 1.0, 0.0)).with_uv([0.0, 1.0]),
+            ],
+            vec![0, 1, 2],
+        )
+        .expect("valid");
+        assert!(mesh.has_uvs());
+    }
+
+    #[test]
+    fn vertex_no_uv_is_not_detected() {
+        let mesh = Mesh::new(
+            None,
+            vec![v(0.0, 0.0, 0.0), v(1.0, 0.0, 0.0), v(0.0, 1.0, 0.0)],
+            vec![0, 1, 2],
+        )
+        .expect("valid");
+        assert!(!mesh.has_uvs());
+    }
+
+    #[test]
+    fn vertex_layout_has_uv_appended() {
+        // Adding `uv` ([f32;2] = 8 bytes) after `color` grew the struct from
+        // 28 to 36 bytes. The layout is position@0, normal@12, color@24,
+        // uv@28 — no padding holes, all naturally aligned (max align = 4).
+        assert_eq!(std::mem::size_of::<Vertex>(), 36);
+        let sample = Vertex {
+            position: [1.0, 2.0, 3.0],
+            normal: [4.0, 5.0, 6.0],
+            color: [7, 8, 9, 10],
+            uv: [11.0, 12.0],
+        };
+        let base = &sample as *const Vertex as usize;
+        assert_eq!(&sample.position as *const _ as usize - base, 0);
+        assert_eq!(&sample.normal as *const _ as usize - base, 12);
+        assert_eq!(&sample.color as *const _ as usize - base, 24);
+        assert_eq!(&sample.uv as *const _ as usize - base, 28);
+    }
+
+    #[test]
+    fn mesh_texture_white_1x1() {
+        let t = MeshTexture::white_1x1();
+        assert_eq!(t.width, 1);
+        assert_eq!(t.height, 1);
+        assert_eq!(t.rgba, vec![255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn set_texture_attaches() {
+        let mut mesh = Mesh::new(
+            None,
+            vec![v(0.0, 0.0, 0.0), v(1.0, 0.0, 0.0), v(0.0, 1.0, 0.0)],
+            vec![0, 1, 2],
+        )
+        .expect("valid");
+        assert!(mesh.texture().is_none());
+        mesh.set_texture(MeshTexture::white_1x1());
+        assert!(mesh.texture().is_some());
+    }
+
+    #[test]
+    fn bbox_uncached_matches_cached() {
+        let mut mesh = Mesh::new(
+            None,
+            vec![v(-1.0, -2.0, 0.0), v(3.0, 4.0, 0.0), v(0.0, 0.0, 0.0)],
+            vec![0, 1, 2],
+        )
+        .expect("valid");
+        let uncached = mesh.bbox_uncached();
+        let cached = mesh.bbox();
+        assert_eq!(uncached, cached);
     }
 }

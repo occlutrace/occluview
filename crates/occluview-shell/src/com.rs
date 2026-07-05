@@ -25,7 +25,7 @@
     clippy::borrow_as_ptr,
     clippy::unnecessary_cast,
     clippy::doc_markdown,
-    missing_docs,
+    missing_docs
 )]
 
 use crate::{render_thumbnail, ShellError};

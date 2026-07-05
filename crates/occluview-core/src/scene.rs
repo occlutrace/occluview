@@ -9,6 +9,7 @@
 //! meshes, the app composes a scene, the renderer consumes it.
 
 use crate::mesh::Mesh;
+use crate::Aabb;
 use glam::{Affine3A, Vec3};
 
 /// Per-instance mesh entry in a scene.
@@ -127,6 +128,45 @@ impl Scene {
     pub fn visible_count(&self) -> usize {
         self.meshes.iter().filter(|m| m.visible).count()
     }
+
+    /// The aggregate axis-aligned bounding box of all **visible** meshes,
+    /// each transformed by its `SceneMesh::transform`. Returns
+    /// [`Aabb::EMPTY`] if there are no visible meshes.
+    ///
+    /// This is the framing box the camera should fit (upper + lower arch as
+    /// one extent). Uses [`Mesh::bbox_uncached`] so it does not require
+    /// `&mut` access to each mesh.
+    #[must_use]
+    pub fn bbox(&self) -> Aabb {
+        self.meshes
+            .iter()
+            .filter(|m| m.visible)
+            .map(|entry| transform_bbox(entry.mesh.bbox_uncached(), entry.transform))
+            .fold(Aabb::EMPTY, Aabb::enclose_box)
+    }
+}
+
+/// Transform an [`Aabb`] by an [`Affine3A`] and return the axis-aligned box
+/// enclosing the 8 transformed corners. Rotation may grow the box (AABB of an
+/// OBB), which is expected and conservative for framing.
+fn transform_bbox(bbox: Aabb, t: Affine3A) -> Aabb {
+    if bbox.is_empty() {
+        return Aabb::EMPTY;
+    }
+    let corners = [
+        bbox.min,
+        Vec3::new(bbox.min.x, bbox.min.y, bbox.max.z),
+        Vec3::new(bbox.min.x, bbox.max.y, bbox.min.z),
+        Vec3::new(bbox.min.x, bbox.max.y, bbox.max.z),
+        Vec3::new(bbox.max.x, bbox.min.y, bbox.min.z),
+        Vec3::new(bbox.max.x, bbox.min.y, bbox.max.z),
+        Vec3::new(bbox.max.x, bbox.max.y, bbox.min.z),
+        bbox.max,
+    ];
+    corners
+        .into_iter()
+        .map(|c| t.transform_point3(c))
+        .fold(Aabb::EMPTY, Aabb::enclose_point)
 }
 
 impl Default for SceneMesh {
@@ -200,5 +240,42 @@ mod tests {
         s.add(SceneMesh::new(tri()));
         s.meshes_mut()[i].visible = false;
         assert_eq!(s.visible_count(), 1);
+    }
+
+    #[test]
+    fn scene_bbox_unions_visible_meshes() {
+        // Two triangles offset along X: one at origin, one translated by 10.
+        let mut s = Scene::new();
+        s.add(SceneMesh::new(tri()));
+        s.add(
+            SceneMesh::new(tri())
+                .with_transform(Affine3A::from_translation(Vec3::new(10.0, 0.0, 0.0))),
+        );
+        let b = s.bbox();
+        assert!(!b.is_empty());
+        // First tri spans 0..1 in X, second spans 10..11 → union 0..11.
+        assert_eq!(b.min.x, 0.0);
+        assert!((b.max.x - 11.0).abs() < 1e-5, "max.x = {}", b.max.x);
+    }
+
+    #[test]
+    fn scene_bbox_skips_hidden_meshes() {
+        let mut s = Scene::new();
+        let i = s.add(SceneMesh::new(tri()));
+        s.add(
+            SceneMesh::new(tri())
+                .with_transform(Affine3A::from_translation(Vec3::new(100.0, 0.0, 0.0))),
+        );
+        s.meshes_mut()[i].visible = false;
+        let b = s.bbox();
+        assert!(!b.is_empty());
+        // Only the translated triangle is visible → X starts at 100.
+        assert!(b.min.x >= 100.0, "min.x = {}", b.min.x);
+    }
+
+    #[test]
+    fn scene_bbox_empty_scene() {
+        let s = Scene::new();
+        assert!(s.bbox().is_empty());
     }
 }
