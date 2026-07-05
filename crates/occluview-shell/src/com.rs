@@ -6,8 +6,8 @@
 //! `GetThumbnail` it reads the bytes, detects the format, and calls the same
 //! `render_thumbnail` code path the CLI uses.
 //!
-//! On any error we return `E_FAIL`; the shell falls back to the default icon.
-//! We never propagate a panic across the COM boundary.
+//! On render errors we return an OccluView placeholder bitmap. COM ABI errors
+//! still return `E_FAIL`. We never propagate a panic across the COM boundary.
 
 // This module is the COM ABI boundary: FFI exports, raw pointer parameters,
 // and windows-rs calls that are `unsafe` by definition. The rest of the crate
@@ -28,7 +28,7 @@
     missing_docs
 )]
 
-use crate::{render_thumbnail_bytes, ShellError};
+use crate::render_thumbnail_or_placeholder;
 use occluview_render::ThumbnailSpec;
 use windows::core::{implement, IUnknown, Interface, HRESULT};
 use windows::Win32::Foundation::BOOL;
@@ -157,17 +157,16 @@ impl ThumbnailProvider {
         Ok(hbmp)
     }
 
-    /// Render at `size` px (square, capped at 1024) and return the HBITMAP.
+    /// Render at `size` px (square, clamped to 1..=1024) and return the HBITMAP.
     fn render_to_hbitmap(&self, size: u32) -> windows::core::Result<HBITMAP> {
-        let size_px = size.min(1024) as u16;
+        let size_px = size.clamp(1, 1024) as u16;
         let spec = ThumbnailSpec {
             size_px,
             ..Default::default()
         };
         let ext = self.extension.borrow().clone();
         let bytes = self.bytes.borrow().clone();
-        let pixels =
-            render_thumbnail_bytes(ext.as_deref(), &bytes, spec).map_err(shell_to_hresult)?;
+        let pixels = render_thumbnail_or_placeholder(ext.as_deref(), &bytes, spec);
         Self::pixels_to_hbitmap(&pixels, u32::from(size_px), u32::from(size_px))
     }
 }
@@ -234,13 +233,6 @@ impl IClassFactory_Impl for ThumbnailProvider_Impl {
         // server lock count for correctness.
         Ok(())
     }
-}
-
-/// Translate a [`ShellError`] into a generic failing HRESULT. We never surface
-/// error text across COM (the shell ignores it and shows its own placeholder).
-fn shell_to_hresult(e: ShellError) -> windows::core::Error {
-    tracing::warn!(error = ?e, "thumbnail render failed; returning E_FAIL");
-    e_fail()
 }
 
 /// `E_FAIL` (0x80004005) as a `windows::core::Error`.

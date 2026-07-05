@@ -15,6 +15,7 @@
 //! normal pointing at the camera. This makes the thumbnail correct regardless
 //! of the source file's orientation, with no per-vertex rewrite.
 
+use crate::placeholder::placeholder_thumbnail;
 use crate::thumbnail_format::infer_thumbnail_format;
 use crate::ShellError;
 use glam::{Mat4, Vec3};
@@ -57,6 +58,25 @@ pub fn render_thumbnail_bytes(
     let kind = infer_thumbnail_format(extension, bytes)?;
     let mesh = dispatch_by_kind(kind, bytes)?;
     render_mesh_thumbnail(mesh, spec)
+}
+
+/// Render a thumbnail or return the deterministic fallback placeholder.
+///
+/// This is the COM-facing safe path: Explorer receives a bitmap even when the
+/// file is malformed, unsupported, or rendering fails.
+#[must_use]
+pub fn render_thumbnail_or_placeholder(
+    extension: Option<&str>,
+    bytes: &[u8],
+    spec: ThumbnailSpec,
+) -> Vec<u8> {
+    match render_thumbnail_bytes(extension, bytes, spec) {
+        Ok(pixels) => pixels,
+        Err(error) => {
+            tracing::warn!(?error, "thumbnail render failed; returning placeholder");
+            placeholder_thumbnail(spec)
+        }
+    }
 }
 
 fn render_mesh_thumbnail(mut mesh: Mesh, spec: ThumbnailSpec) -> Result<Vec<u8>, ShellError> {
@@ -162,6 +182,16 @@ mod tests {
                 occluview_formats::FormatError::Unsupported { .. }
             ))
         ));
+    }
+
+    #[test]
+    fn invalid_stream_returns_placeholder_without_error() {
+        let spec = ThumbnailSpec {
+            size_px: 16,
+            ..Default::default()
+        };
+        let pixels = render_thumbnail_or_placeholder(None, b"not a mesh", spec);
+        assert_eq!(pixels, placeholder_thumbnail(spec));
     }
 
     #[test]

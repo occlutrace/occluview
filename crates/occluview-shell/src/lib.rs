@@ -24,6 +24,7 @@
 // module can relax it — `forbid` is unreleasable.
 
 pub mod error;
+pub mod placeholder;
 pub mod render_thumb;
 pub mod thumbnail_format;
 
@@ -34,7 +35,8 @@ pub mod com;
 pub mod registration;
 
 pub use error::ShellError;
-pub use render_thumb::{render_thumbnail, render_thumbnail_bytes};
+pub use placeholder::placeholder_thumbnail;
+pub use render_thumb::{render_thumbnail, render_thumbnail_bytes, render_thumbnail_or_placeholder};
 
 /// The CLSID string for the OccluView thumbnail provider.
 ///
