@@ -17,11 +17,16 @@
 
 use crate::placeholder::placeholder_thumbnail;
 use crate::thumbnail_format::infer_thumbnail_format;
+use crate::thumbnail_timeout::run_with_timeout;
 use crate::ShellError;
 use glam::{Mat4, Vec3};
 use occluview_core::{principal_axes, Camera, Mesh};
 use occluview_formats::dispatch::dispatch_by_kind;
 use occluview_render::{GpuCamera, Offscreen, ThumbnailSpec};
+use std::time::Duration;
+
+/// Default maximum wall-clock wait for a shell thumbnail request.
+pub const DEFAULT_THUMBNAIL_TIMEOUT: Duration = Duration::from_millis(1_500);
 
 /// Load `bytes` (a file with the given lowercase extension, no dot) and render
 /// a thumbnail per `spec`. Returns RGBA8 pixels in row-major order, length
@@ -70,10 +75,37 @@ pub fn render_thumbnail_or_placeholder(
     bytes: &[u8],
     spec: ThumbnailSpec,
 ) -> Vec<u8> {
-    match render_thumbnail_bytes(extension, bytes, spec) {
-        Ok(pixels) => pixels,
-        Err(error) => {
+    render_thumbnail_or_placeholder_with_timeout(extension, bytes, spec, DEFAULT_THUMBNAIL_TIMEOUT)
+}
+
+/// Render with a bounded wait or return the deterministic placeholder.
+///
+/// The worker thread may finish after the caller has returned; that is still
+/// better than blocking Explorer's thumbnail worker beyond the time budget.
+#[must_use]
+pub fn render_thumbnail_or_placeholder_with_timeout(
+    extension: Option<&str>,
+    bytes: &[u8],
+    spec: ThumbnailSpec,
+    timeout: Duration,
+) -> Vec<u8> {
+    let extension = extension.map(ToOwned::to_owned);
+    let bytes = bytes.to_vec();
+    let result = run_with_timeout(timeout, move || {
+        render_thumbnail_bytes(extension.as_deref(), &bytes, spec)
+    });
+
+    match result {
+        Some(Ok(pixels)) => pixels,
+        Some(Err(error)) => {
             tracing::warn!(?error, "thumbnail render failed; returning placeholder");
+            placeholder_thumbnail(spec)
+        }
+        None => {
+            tracing::warn!(
+                ?timeout,
+                "thumbnail render timed out; returning placeholder"
+            );
             placeholder_thumbnail(spec)
         }
     }
@@ -191,6 +223,17 @@ mod tests {
             ..Default::default()
         };
         let pixels = render_thumbnail_or_placeholder(None, b"not a mesh", spec);
+        assert_eq!(pixels, placeholder_thumbnail(spec));
+    }
+
+    #[test]
+    fn timed_out_thumbnail_returns_placeholder() {
+        let spec = ThumbnailSpec {
+            size_px: 16,
+            ..Default::default()
+        };
+        let pixels =
+            render_thumbnail_or_placeholder_with_timeout(None, b"not a mesh", spec, Duration::ZERO);
         assert_eq!(pixels, placeholder_thumbnail(spec));
     }
 

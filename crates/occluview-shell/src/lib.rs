@@ -27,6 +27,7 @@ pub mod error;
 pub mod placeholder;
 pub mod render_thumb;
 pub mod thumbnail_format;
+pub mod thumbnail_timeout;
 
 #[cfg(windows)]
 pub mod com;
