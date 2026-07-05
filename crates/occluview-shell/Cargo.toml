@@ -51,7 +51,7 @@ features = [
 # microsoft/windows-rs#3038). An explicit `windows-core` dependency of the
 # same version makes those paths resolve.
 [target.'cfg(windows)'.dependencies.windows-core]
-version = "0.58"
+version = "0.62"
 
 [dev-dependencies]
 proptest = { workspace = true }
