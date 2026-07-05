@@ -6,8 +6,8 @@
 
 use crate::error::FormatError;
 use crate::probe::FormatKind;
-use occluview_core::Mesh;
-use std::path::Path;
+use occluview_core::{Mesh, Scene, SceneMesh};
+use std::path::{Path, PathBuf};
 
 /// Read `bytes` as the format indicated by `kind`, returning a [`Mesh`].
 ///
@@ -97,6 +97,33 @@ pub fn read_file(path: &Path) -> Result<Mesh, FormatError> {
     }
     let bytes = std::fs::read(path).map_err(FormatError::Io)?;
     dispatch_by_extension(&ext, &bytes)
+}
+
+/// Read multiple files into a [`Scene`], wrapping each [`Mesh`] in a
+/// [`SceneMesh`]. The canonical dental use case is loading an upper + lower
+/// arch pair as a two-mesh scene (ADR-0009).
+///
+/// Each mesh is placed at the origin with an identity transform; the caller
+/// (app / thumbnail framer) repositions them as needed via `SceneMesh`'s
+/// transform field, or just relies on `Scene::bbox()` to frame the union.
+///
+/// **Fail-fast:** returns the first `(path, error)` pair encountered. The
+/// caller decides whether to abort or offer "skip + continue" — for v1 we
+/// abort, which keeps the error path simple and predictable.
+///
+/// # Errors
+/// - The `Err` variant carries the path that failed and its [`FormatError`].
+pub fn read_files(paths: &[PathBuf]) -> Result<Scene, (PathBuf, FormatError)> {
+    let mut scene = Scene::new();
+    for path in paths {
+        match read_file(path) {
+            Ok(mesh) => {
+                scene.add(SceneMesh::new(mesh));
+            }
+            Err(e) => return Err((path.clone(), e)),
+        }
+    }
+    Ok(scene)
 }
 
 #[cfg(test)]

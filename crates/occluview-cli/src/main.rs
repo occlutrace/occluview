@@ -5,15 +5,17 @@
 //!     the same offscreen path the Explorer shell extension uses. The exact
 //!     same code path (`render_thumb::render_thumbnail`), so a correct PNG here
 //!     means a correct thumbnail in Explorer.
-//!   - `info <file>` - print format, vertex/triangle counts, bbox, colors.
+//!   - `info <file> [file...]` - print format, vertex/triangle counts, bbox,
+//!     colors, UVs, texture. Multiple files print per-file stats + an
+//!     aggregate scene bbox (upper+lower arch case).
 //!   - `help` - show usage.
 
 // CLI tool: stdout/stderr is the entire point.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use anyhow::{anyhow, Context, Result};
-use occluview_formats::dispatch::read_file;
-use std::path::PathBuf;
+use occluview_formats::dispatch::{read_file, read_files};
+use std::path::{Path, PathBuf};
 
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
@@ -104,13 +106,60 @@ fn cmd_thumbnail(args: &mut impl Iterator<Item = String>) -> Result<()> {
     Ok(())
 }
 
-/// `info <file>` - print mesh statistics.
+/// `info <file> [file...]` - print mesh statistics. When multiple files are
+/// given, prints per-file stats plus an aggregate scene bbox.
 fn cmd_info(args: &mut impl Iterator<Item = String>) -> Result<()> {
-    let file: PathBuf = args
-        .next()
-        .ok_or_else(|| anyhow!("info: missing <file> argument"))?
-        .into();
-    let mut mesh = read_file(&file).with_context(|| format!("loading {}", file.display()))?;
+    let files: Vec<PathBuf> = args.map(PathBuf::from).collect();
+    if files.is_empty() {
+        return Err(anyhow!("info: missing <file> argument"));
+    }
+
+    // Single-file fast path keeps the existing output format unchanged.
+    if files.len() == 1 {
+        return cmd_info_one(&files[0]);
+    }
+
+    // Multi-file: per-file summary + scene aggregate.
+    let scene = read_files(&files).map_err(|(path, e)| anyhow!("{}: {}", path.display(), e))?;
+
+    for (i, entry) in scene.meshes().iter().enumerate() {
+        let m = &entry.mesh;
+        let bbox = m.bbox_uncached();
+        let [w, h, d] = bbox.dimensions_mm();
+        println!(
+            "[{}/{}] {}  verts={} tris={} kind={} bbox={:.1}x{:.1}x{:.1}mm",
+            i + 1,
+            scene.meshes().len(),
+            files
+                .get(i)
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
+            m.vertices().len(),
+            m.triangle_count(),
+            if m.is_point_cloud() { "cloud" } else { "mesh" },
+            w.as_mm(),
+            h.as_mm(),
+            d.as_mm(),
+        );
+    }
+
+    let scene_bbox = scene.bbox();
+    if !scene_bbox.is_empty() {
+        let [w, h, d] = scene_bbox.dimensions_mm();
+        println!(
+            "Scene bbox: {:.2} x {:.2} x {:.2} mm  ({})",
+            w.as_mm(),
+            h.as_mm(),
+            d.as_mm(),
+            files.len()
+        );
+    }
+    Ok(())
+}
+
+/// Single-file info (the original output format).
+fn cmd_info_one(file: &Path) -> Result<()> {
+    let mut mesh = read_file(file).with_context(|| format!("loading {}", file.display()))?;
 
     let bbox = mesh.bbox();
     let [w, h, d] = bbox.dimensions_mm();
@@ -133,6 +182,15 @@ fn cmd_info(args: &mut impl Iterator<Item = String>) -> Result<()> {
     println!(
         "Colors:     {}",
         if mesh.has_vertex_colors() {
+            "yes"
+        } else {
+            "no"
+        }
+    );
+    println!("UVs:        {}", if mesh.has_uvs() { "yes" } else { "no" });
+    println!(
+        "Texture:    {}",
+        if mesh.texture().is_some() {
             "yes"
         } else {
             "no"
