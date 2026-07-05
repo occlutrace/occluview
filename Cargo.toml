@@ -54,7 +54,7 @@ occluview-render  = { path = "crates/occluview-render" }
 occluview-shell   = { path = "crates/occluview-shell" }
 
 # Math / numerics.
-glam    = "0.29"            # permissive (MIT OR Apache-2.0)
+glam    = "0.33"            # permissive (MIT OR Apache-2.0)
 bytemuck = { version = "1.18", features = ["derive"] }
 
 # Parallelism / async.
