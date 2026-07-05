@@ -6,7 +6,6 @@
 
 use crate::error::RenderError;
 use occluview_core::{Mesh, Vertex};
-use std::mem::size_of;
 
 /// A mesh resident on the GPU: vertex buffer, index buffer, and the index count
 /// for the draw call.

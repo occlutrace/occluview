@@ -265,17 +265,16 @@ mod app_impl {
                 size_px: 256,
                 ..Default::default()
             };
-            let pixels =
-                match pollster::block_on(offscreen.render_cut_view(&mesh, &cut, spec)) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("cut-view render failed: {e}");
-                        return;
-                    }
-                };
-            let color_image =
-                egui::ColorImage::from_rgba_unmultiplied([256, 256], &pixels);
-            let texture = ctx.load_texture("occluview-cut", color_image, egui::TextureOptions::LINEAR);
+            let pixels = match pollster::block_on(offscreen.render_cut_view(&mesh, &cut, spec)) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("cut-view render failed: {e}");
+                    return;
+                }
+            };
+            let color_image = egui::ColorImage::from_rgba_unmultiplied([256, 256], &pixels);
+            let texture =
+                ctx.load_texture("occluview-cut", color_image, egui::TextureOptions::LINEAR);
             self.cut_texture = Some(texture);
             self.cut_needs_render = false;
         }
@@ -459,8 +458,11 @@ mod app_impl {
                                 ui.label("Yaw:");
                                 if ui
                                     .add(
-                                        egui::Slider::new(&mut self.cut_state.yaw_deg, -90.0..=90.0)
-                                            .suffix("°"),
+                                        egui::Slider::new(
+                                            &mut self.cut_state.yaw_deg,
+                                            -90.0..=90.0,
+                                        )
+                                        .suffix("°"),
                                     )
                                     .changed()
                                 {
@@ -471,8 +473,11 @@ mod app_impl {
                                 ui.label("Pitch:");
                                 if ui
                                     .add(
-                                        egui::Slider::new(&mut self.cut_state.pitch_deg, -90.0..=90.0)
-                                            .suffix("°"),
+                                        egui::Slider::new(
+                                            &mut self.cut_state.pitch_deg,
+                                            -90.0..=90.0,
+                                        )
+                                        .suffix("°"),
                                     )
                                     .changed()
                                 {

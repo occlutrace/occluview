@@ -78,9 +78,9 @@ mod tests {
 
     #[test]
     fn identity_is_96_bytes_and_aligned() {
-        assert_eq!(std::mem::size_of::<GpuMeshUniform>(), 96);
+        assert_eq!(size_of::<GpuMeshUniform>(), 96);
         // 16-byte aligned (std140 requirement for the uniform buffer).
-        assert_eq!(std::mem::align_of::<GpuMeshUniform>(), 4);
+        assert_eq!(align_of::<GpuMeshUniform>(), 4);
     }
 
     #[test]

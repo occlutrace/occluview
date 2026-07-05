@@ -10,7 +10,6 @@ use crate::error::RenderError;
 use crate::gpu::{camera_bind_layout, GpuMesh};
 use crate::mesh_uniform::GpuMeshUniform;
 use std::borrow::Cow;
-use std::mem::size_of;
 
 const SHADER_SRC: &str = include_str!("../shaders/mesh.wgsl");
 const CAP_SHADER_SRC: &str = include_str!("../shaders/cap.wgsl");

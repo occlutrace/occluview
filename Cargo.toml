@@ -4,9 +4,9 @@
 #   core ← (nothing)
 #   formats → core
 #   render  → core
-#   shell   → core + render
+#   shell   → core + render + formats
 #   app     → core + formats + render + shell
-#   cli     → core + formats + render
+#   cli     → core + formats + render + shell
 # Cycles are P0. Never add an upward dependency.
 #
 # License: Apache-2.0 (NOTICE + LICENSE).
@@ -40,7 +40,7 @@ edition = "2021"
 rust-version = "1.81"        # MSRV; matches rust-toolchain.toml
 authors = ["OccluTrace, Inc. and contributors"]
 license = "Apache-2.0"
-repository = "https://github.com/occlutrace/occluview"
+repository = "https://github.com/zer0ltrnce/occluview"
 homepage = "https://occlutrace.ai"
 publish = false              # we are not on crates.io yet
 

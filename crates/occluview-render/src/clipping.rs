@@ -267,7 +267,7 @@ mod tests {
         // std140: vec3 rounds up to 16-byte boundary, so the WGSL struct is
         // 16 (vec3 normal) + 4 (distance) + 4 (enabled) + 12 (pad to 32) = 32.
         // The Rust struct must match for the uniform buffer to validate.
-        assert_eq!(std::mem::size_of::<ClipPlane>(), 32);
+        assert_eq!(size_of::<ClipPlane>(), 32);
     }
 
     #[test]

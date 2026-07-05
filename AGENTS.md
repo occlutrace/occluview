@@ -1,5 +1,6 @@
 # AGENTS.md — OccluView
 
+
 > **Read this FIRST. Every time.** This file is binding for every contributor,
 > human or AI. It is the constitution of the project. If anything in the codebase
 > contradicts this file, this file wins until the file is amended via an ADR.
@@ -139,7 +140,7 @@ occluview/
 ```
 
 Layering rule (enforced in §0.4): `formats → core`, `render → core`,
-`shell → core + render`, `app → all`, `cli → core + render + formats`.
+`shell → core + render + formats`, `app → all`, `cli → core + render + formats + shell (reuses shell::render_thumbnail)`.
 **`core` depends on nothing in this workspace.** Cycles are P0.
 
 ---
@@ -197,9 +198,9 @@ The lint stays green by exception flag, recorded in the PR.
   (`…`), or emoji in code, comments, commit messages, or PR text. Em-dashes in
   particular are a tell-tale fingerprint of AI text leaking into human artifacts
   (llama.cpp rule, see `docs/RESEARCH.md` §3.2). Use `,` `:` `-` `--` instead.
-- **Attribution for AI-assisted commits:** use the `Assisted-by:` trailer,
-  **never** `Co-authored-by:` for an AI. Format:
-  `Assisted-by: Claude:claude-5.2-sonnet [claude-code]` (Linux kernel convention).
+- **No AI attribution trailers of any kind** (owner policy, 2026-07-05):
+  no `Assisted-by:`, no `Co-authored-by:` for an AI, no tool/session links.
+  Commits speak for the change, not the tooling.
   AI must never add `Signed-off-by:` — only humans can legally certify the DCO.
 - Branch: `feat/<scope>-<topic>`, `fix/<scope>-<topic>`, `docs/<topic>`.
 - PR size: target **< 600 diff lines**. Larger changes split into a stack.
