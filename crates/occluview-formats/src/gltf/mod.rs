@@ -233,11 +233,11 @@ fn read_color_f32(
             let mut out = Vec::with_capacity(acc.count);
             for i in 0..acc.count {
                 let off = i * comp_per_elem * 4;
-                let r = to_u8(f32_at(&bytes[off..]));
-                let g = to_u8(f32_at(&bytes[off + 4..]));
-                let b = to_u8(f32_at(&bytes[off + 8..]));
+                let r = to_u8(f32_at(bytes.get(off..off + 4).unwrap_or(&[0; 4])));
+                let g = to_u8(f32_at(bytes.get(off + 4..off + 8).unwrap_or(&[0; 4])));
+                let b = to_u8(f32_at(bytes.get(off + 8..off + 12).unwrap_or(&[0; 4])));
                 let a = if comp_per_elem == 4 {
-                    to_u8(f32_at(&bytes[off + 12..]))
+                    to_u8(f32_at(bytes.get(off + 12..off + 16).unwrap_or(&[0; 4])))
                 } else {
                     255
                 };
@@ -295,9 +295,9 @@ fn read_indices(
     for i in 0..acc.count {
         let off = i * bytes_per;
         let v = match bytes_per {
-            4 => u32_at(&bytes[off..]),
-            2 => u32::from(u16_at(&bytes[off..])),
-            1 => u32::from(bytes[off]),
+            4 => u32_at(bytes.get(off..off + 4).unwrap_or(&[0; 4])),
+            2 => u32::from(u16_at(bytes.get(off..off + 2).unwrap_or(&[0; 2]))),
+            1 => u32::from(*bytes.get(off).unwrap_or(&0)),
             _ => unreachable!(),
         };
         out.push(v);
@@ -450,5 +450,57 @@ mod tests {
         let bytes = glb::build_glb(json, &bin);
         let mesh = read(&bytes).expect("valid");
         assert_eq!(mesh.triangle_count(), 1);
+    }
+
+    /// Regression: index values must round-trip correctly. An earlier bug had
+    /// `read_indices` pass `&bytes[off..]` (a tail slice, not exactly 4 bytes)
+    /// to `u32_at`, whose `try_into().unwrap_or([0;4])` then silently zeroed
+    /// every index — producing degenerate `(0,0,0)` triangles and empty renders
+    /// for any real GLB. This test uses non-trivial index values so the bug
+    /// surfaces as a value mismatch, not just a count check.
+    #[test]
+    fn index_values_round_trip_exactly() {
+        // 6 vertices, 2 triangles with indices (1,4,2) and (5,0,3).
+        let json = br#"{"asset":{"version":"2.0"},
+"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],
+"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}],
+"accessors":[{"bufferView":0,"count":6,"type":"VEC3","componentType":5126},
+             {"bufferView":1,"count":6,"type":"SCALAR","componentType":5125}],
+"bufferViews":[{"buffer":0,"byteLength":72},{"buffer":0,"byteOffset":72,"byteLength":24}],
+"buffers":[{"byteLength":96}]}"#;
+        let mut bin = Vec::new();
+        // 6 positions (values irrelevant to this test).
+        for _ in 0..18 {
+            bin.extend_from_slice(&0.0_f32.to_le_bytes());
+        }
+        // 6 u32 indices: 1,4,2,5,0,3
+        for i in [1u32, 4, 2, 5, 0, 3] {
+            bin.extend_from_slice(&i.to_le_bytes());
+        }
+        let bytes = glb::build_glb(json, &bin);
+        let mesh = read(&bytes).expect("valid GLB");
+        assert_eq!(mesh.indices(), &[1, 4, 2, 5, 0, 3]);
+    }
+
+    /// Regression companion: USHORT (5123) indices also round-trip exactly.
+    #[test]
+    fn ushort_index_values_round_trip() {
+        let json = br#"{"asset":{"version":"2.0"},
+"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],
+"meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}],
+"accessors":[{"bufferView":0,"count":6,"type":"VEC3","componentType":5126},
+             {"bufferView":1,"count":6,"type":"SCALAR","componentType":5123}],
+"bufferViews":[{"buffer":0,"byteLength":72},{"buffer":0,"byteOffset":72,"byteLength":12}],
+"buffers":[{"byteLength":84}]}"#;
+        let mut bin = Vec::new();
+        for _ in 0..18 {
+            bin.extend_from_slice(&0.0_f32.to_le_bytes());
+        }
+        for i in [1u16, 4, 2, 5, 0, 3] {
+            bin.extend_from_slice(&i.to_le_bytes());
+        }
+        let bytes = glb::build_glb(json, &bin);
+        let mesh = read(&bytes).expect("valid GLB");
+        assert_eq!(mesh.indices(), &[1, 4, 2, 5, 0, 3]);
     }
 }
