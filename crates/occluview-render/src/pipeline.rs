@@ -242,6 +242,12 @@ impl Renderer {
         &self.texture_layout
     }
 
+    /// The per-mesh uniform bind group layout (group 1). Exposed so callers
+    /// can build per-mesh bind groups for multi-mesh scenes.
+    pub fn mesh_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.mesh_layout
+    }
+
     /// Issue the draw for one mesh inside a render pass. Caller has already
     /// begun the pass against a color+depth view, set the camera, and will
     /// submit the encoder. Picks the triangle or point pipeline by `kind`.

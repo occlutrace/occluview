@@ -6,7 +6,19 @@ use crate::error::RenderError;
 use crate::gpu::GpuMesh;
 use crate::mesh_uniform::GpuMeshUniform;
 use crate::pipeline::Renderer;
+use crate::texture::GpuTexture;
 use occluview_core::Mesh;
+
+/// One entry in a multi-mesh offscreen scene draw: the mesh, its per-mesh
+/// uniform, and an optional texture.
+pub struct SceneDrawEntry<'a> {
+    /// The CPU mesh to upload + draw.
+    pub mesh: &'a Mesh,
+    /// Per-mesh uniform (model, tint, opacity, `has_texture` flag).
+    pub uniform: &'a GpuMeshUniform,
+    /// Texture to sample; if `None`, the fallback 1×1 white texture is used.
+    pub texture: Option<&'a GpuTexture>,
+}
 
 /// Parameters for an offscreen render.
 #[derive(Clone, Copy, Debug)]
@@ -159,6 +171,129 @@ impl Offscreen {
     /// additional bind groups.
     pub fn identity_uniform_buffer(&self) -> &wgpu::Buffer {
         &self.mesh_uniform_buffer
+    }
+
+    /// The per-mesh uniform bind group layout (group 1). Exposed so callers
+    /// can build per-mesh bind groups for multi-mesh scenes.
+    pub fn mesh_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        self.renderer.mesh_bind_group_layout()
+    }
+
+    /// Render a **multi-mesh scene** offscreen: uploads each mesh, sets its
+    /// per-mesh uniform (transform + tint + opacity + `has_texture`), binds its
+    /// texture (or the fallback), and draws all meshes in one render pass.
+    ///
+    /// `entries` is a slice of `(GpuMesh, GpuMeshUniform, Option<&GpuTexture>,
+    /// MeshKind)`. Each entry becomes one draw call within the pass.
+    ///
+    /// Returns RGBA8 pixels, length `size_px * size_px * 4`, top-to-bottom.
+    ///
+    /// # Errors
+    /// - [`RenderError::Surface`] on device loss or buffer-map failure.
+    #[allow(clippy::unused_async)]
+    pub async fn render_scene(
+        &self,
+        entries: &[SceneDrawEntry<'_>],
+        camera: &GpuCamera,
+        spec: ThumbnailSpec,
+    ) -> Result<Vec<u8>, RenderError> {
+        let size = u32::from(spec.size_px);
+        let device = self.renderer.device();
+        let queue = self.renderer.queue();
+
+        let (color_texture, color_view) = make_color_target(device, size);
+        let (_depth_texture, depth_view) =
+            make_depth_target(device, size, self.renderer.depth_format());
+
+        self.renderer.set_camera(camera);
+        let camera_bg = self.renderer.camera_bind_group();
+
+        // Upload each mesh + its per-mesh uniform buffer. Keep the per-mesh
+        // buffers/bind-groups alive; textures are borrowed (group 2). We
+        // collect texture bind-group references up front so the borrow lives
+        // across the pass.
+        let mut uploaded: Vec<(
+            GpuMesh,
+            wgpu::Buffer,
+            wgpu::BindGroup,
+            occluview_core::MeshKind,
+        )> = Vec::with_capacity(entries.len());
+        // Texture bind group per entry: either a borrow of an entry's
+        // GpuTexture.bind_group, or the fallback. Stored as Option; None =
+        // fallback.
+        let mut tex_bgs: Vec<Option<&wgpu::BindGroup>> = Vec::with_capacity(entries.len());
+        for entry in entries {
+            let gpu_mesh = GpuMesh::upload(device, queue, entry.mesh);
+            let uniform_buf = self.renderer.mesh_uniform_buffer();
+            queue.write_buffer(&uniform_buf, 0, bytemuck::bytes_of(entry.uniform));
+            let mesh_bg = self.renderer.mesh_bind_group(&uniform_buf);
+            tex_bgs.push(entry.texture.map(|t| &t.bind_group));
+            uploaded.push((gpu_mesh, uniform_buf, mesh_bg, entry.mesh.kind()));
+        }
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("occluview offscene encoder"),
+        });
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("occluview offscene pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &color_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: spec.background[0],
+                        g: spec.background[1],
+                        b: spec.background[2],
+                        a: spec.background[3],
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        for (i, (gpu_mesh, _, mesh_bg, kind)) in uploaded.iter().enumerate() {
+            let tex_bg = tex_bgs[i].unwrap_or(&self.texture_bind_group);
+            self.renderer
+                .draw(&mut rpass, &camera_bg, mesh_bg, tex_bg, gpu_mesh, *kind);
+        }
+        drop(rpass);
+
+        let padded = padded_bytes_per_row(size);
+        let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("occluview offscene readback"),
+            size: u64::from(padded) * u64::from(size),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        encoder.copy_texture_to_buffer(
+            wgpu::ImageCopyTexture {
+                texture: &color_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyBuffer {
+                buffer: &output_buffer,
+                layout: wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded),
+                    rows_per_image: Some(size),
+                },
+            },
+            extent(size),
+        );
+        queue.submit(std::iter::once(encoder.finish()));
+
+        Ok(self.read_back(&output_buffer, padded, spec.size_px))
     }
 
     /// Begin the offscreen render pass against `targets` and draw `mesh`.
