@@ -35,7 +35,7 @@ default-members = [
 
 # Workspace-wide package metadata. Crates override only what they need.
 [workspace.package]
-version = "0.0.1"            # pre-1.0; see docs/CHANGELOG.md
+version = "0.0.1"            # pre-1.0; see CHANGELOG.md
 edition = "2021"
 rust-version = "1.81"        # MSRV; matches rust-toolchain.toml
 authors = ["OccluTrace, Inc. and contributors"]
@@ -130,7 +130,7 @@ unused_qualifications    = "warn"
 # set the group priority to -1 (clippy requires this for overrides to win).
 pedantic      = { level = "warn", priority = -1 }
 all           = { level = "warn", priority = -1 }
-# Slop blockers (AGENTS.md §3, ANTI_SLOP.md).
+# Complexity/hygiene lints (see AGENTS.md).
 unwrap_used       = "deny"
 expect_used       = "deny"
 panic             = "deny"

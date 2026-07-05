@@ -90,7 +90,7 @@ CBCT interpretation) must be escalated to maintainers and may be rejected.
 - **PCA** — Principal Component Analysis. The standard pose-invariant method for
   auto-orienting a dental mesh for thumbnails: covariance SVD on the vertex
   cloud gives arch-length / buccal-lingual / occlusal-gingival axes.
-  See `docs/RESEARCH.md` §4.6.
+
 
 ## Windows shell
 
@@ -123,7 +123,8 @@ CBCT interpretation) must be escalated to maintainers and may be rejected.
 - **DoD** — Definition of Done (`AGENTS.md` §7).
 - **DCO** — Developer Certificate of Origin (`CONTRIBUTING.md`); `git commit -s`.
 - **Open-core** — Apache-2.0 viewer (this repo) + proprietary OccluTrace cloud.
-- **Slop** — plausible-but-unearned code. See `docs/ANTI_SLOP.md`.
+- **Slop** — plausible-but-unearned code: speculative abstractions, unused
+  dependencies, copy-paste drift. Kept out by the lint set in `Cargo.toml`.
 - **Conventional Commit** — `<type>(<scope>): <subject>` (`AGENTS.md` §5).
 - **Assisted-by** — commit trailer for AI attribution, in place of
   `Co-authored-by` (Linux kernel convention, `AGENTS.md` §5).

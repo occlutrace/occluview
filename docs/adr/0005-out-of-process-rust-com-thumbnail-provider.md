@@ -88,7 +88,7 @@ deferred to v2.
 
 ## Addendum (2026-07, post-research refinement)
 
-Deeper research (`docs/RESEARCH.md` §1.2) refined the architecture: **the
+Deeper research refined the architecture: **the
 in-proc stub must not render**. It spawns / connects to a separate worker
 process that does all parsing and rendering. This is the production pattern used
 by stl-thumb, Icaros, FastPictureViewer, and Microsoft's own samples.

@@ -3,9 +3,9 @@
 First: thank you. OccluView is a community project backed by OccluTrace, and
 every careful contribution makes dental technicians' days better.
 
-**Read [`AGENTS.md`](AGENTS.md) first.** It is the constitution and applies to
-every contributor, human or AI. This document is the practical companion: how to
-set up, how to run checks locally, and the Definition of Done.
+**Read [`AGENTS.md`](AGENTS.md) first** — the build commands, crate map, and
+conventions. This document is the practical companion: how to set up, how to
+run checks locally, and what a mergeable PR looks like.
 
 ## 1. Set up
 
@@ -30,9 +30,9 @@ cargo install cargo-deny cargo-nextest cargo-binstall
 
 ## 2. Before you write code
 
-1. **Find or open an issue.** Every non-trivial change starts as an issue with a
-   `brainstorm` → `plan` (see `AGENTS.md` §1). Don't open a drive-by PR for a big
-   feature without an issue.
+1. **Find or open an issue.** Every non-trivial change starts as an issue so
+   the approach can be discussed before the code exists. Don't open a drive-by
+   PR for a big feature without one.
 2. **Read the relevant ADRs** in [`docs/adr/`](docs/adr/). If your change
    contradicts a past decision, you need a new ADR first.
 3. **Branch** from `main`: `feat/<scope>-<topic>` / `fix/<scope>-<topic>` /
@@ -111,7 +111,7 @@ The PR template (`.github/pull_request_template.md`) covers this; summary:
 
 ## 8. Release flow (maintainers)
 
-1. Update `docs/CHANGELOG.md`: move `[Unreleased]` to a version, date it.
+1. Update `CHANGELOG.md`: move `[Unreleased]` to a version, date it.
 2. Tag `vX.Y.Z`; CI builds the signed MSI + symbols.
 3. The release is reproducible from the tagged commit + pinned toolchain.
 4. Sign the shell DLL and the installer (a shell extension loaded into

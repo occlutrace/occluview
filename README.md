@@ -22,7 +22,7 @@ OccluView is an open-source desktop viewer built by
 > from the Store on **July 1, 2026** — and it never provided STL/PLY thumbnails
 > anyway. Paint 3D, 3D Builder, and Print 3D are already gone. There is no
 > first-party answer for opening dental scans on Windows. OccluView fills that
-> gap. See [`docs/RESEARCH.md`](docs/RESEARCH.md) §5.1 for the landscape.
+> gap.
 
 It is designed around three principles:
 
@@ -97,10 +97,8 @@ responsibility per file, conventional commits, no AI slop.
 Useful entry points:
 - [`AGENTS.md`](AGENTS.md) — constitution + 7-stage workflow
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — crate graph and data flow
-- [`docs/RESEARCH.md`](docs/RESEARCH.md) — the research base behind every decision
 - [`docs/adr/`](docs/adr/) — architecture decision records
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, conventions, Definition of Done
-- [`docs/ANTI_SLOP.md`](docs/ANTI_SLOP.md) — how we keep the codebase clean
 
 ## Governance & licensing
 

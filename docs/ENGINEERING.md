@@ -114,7 +114,7 @@ needs a Windows host (see CONTRIBUTING.md "Windows testing").
 ## 9. Releases
 
 1. Ensure `main` is green and the perf bench is within budget.
-2. Update `docs/CHANGELOG.md`: move `[Unreleased]` to `vX.Y.Z (YYYY-MM-DD)`.
+2. Update `CHANGELOG.md`: move `[Unreleased]` to `vX.Y.Z (YYYY-MM-DD)`.
 3. Tag `vX.Y.Z`. CI builds the MSI + symbols; the shell DLL and the installer
    are **signed** (a shell extension loaded into Explorer must be signed).
 4. Publish: GitHub Release with the signed installer + checksums + SBOM

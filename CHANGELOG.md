@@ -19,7 +19,7 @@ Categories: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`,
 - **STL reader** (`occluview-formats::stl`): binary + ASCII, with dental-scanner
   quirk tolerance (lying triangle counts, non-ASCII headers, missing
   `endsolid`, case-insensitive keywords).
-- **Research base**: `docs/RESEARCH.md` consolidating the five-stream
+- **Research base** consolidated into the ADRs
   investigation (Windows shell, render stack, governance, formats, landscape)
   that validated and refined the foundational decisions.
 - Project foundation: `AGENTS.md` (constitution + 7-stage workflow),
@@ -29,7 +29,7 @@ Categories: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`,
   (wgpu), GUI (egui), loaders (per-format), shell integration (out-of-process
   COM), build (Cargo), mesh-only scope, Apache-2.0 licensing, and dental defaults.
 - Engineering docs: `docs/ENGINEERING.md`, `docs/TESTING.md`,
-  `docs/SHELL_INTEGRATION.md`, `docs/ANTI_SLOP.md`, `docs/GLOSSARY.md`,
+  `docs/SHELL_INTEGRATION.md`, `docs/GLOSSARY.md`,
   `docs/FORMAT_SUPPORT.md`, `docs/ROADMAP.md`.
 - Workspace skeleton: `crates/{core,formats,render,shell,app,cli}` with crate
   manifests and stub `lib.rs`/`main.rs` files (no functional behavior yet).
