@@ -10,10 +10,11 @@
 //! ## Status
 //!
 //! `render_thumbnail` is the platform-agnostic render entry point, fully tested
-//! on Linux. The COM class (`com::ThumbnailProvider`), class factory, and
-//! `DllGetClassObject`/`DllCanUnloadNow` live in `com.rs` and are `cfg(windows)`
+//! on Linux. The COM class (`com::ThumbnailProvider`), class factory,
+//! `DllGetClassObject`/`DllCanUnloadNow`, and `DllRegisterServer`/
+//! `DllUnregisterServer` live in `com.rs` and `registration.rs`, all `cfg(windows)`
 //! — they require the windows toolchain to compile but the rest of the crate
-//! builds on any host. `DllRegisterServer` + the registry script land next.
+//! builds on any host.
 
 #![cfg_attr(not(test), deny(unsafe_code))]
 // The COM class (`com.rs`) is `unsafe` by definition (FFI + raw pointers across
@@ -27,6 +28,9 @@ pub mod render_thumb;
 
 #[cfg(windows)]
 pub mod com;
+
+#[cfg(windows)]
+pub mod registration;
 
 pub use error::ShellError;
 pub use render_thumb::render_thumbnail;

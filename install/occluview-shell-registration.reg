@@ -1,0 +1,40 @@
+Windows Registry Editor Version 5.00
+
+; OccluView shell extension — manual registration script.
+;
+; Prefer `regsvr32 occluview_shell.dll` (runs DllRegisterServer, which fills in
+; the absolute DLL path). This .reg file is a fallback for environments where
+; regsvr32 is blocked by policy; replace <DLL_PATH> with the absolute path to
+; occluview_shell.dll before importing.
+;
+; Layout (ADR-0005):
+;   HKCR\CLSID\{9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}\InprocServer32
+;       (default) = <DLL_PATH>
+;       ThreadingModel = Both
+;   HKCR\<ext>\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}
+;       (default) = {9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}
+;
+; The {E357FCCD-...} CLSID is the shell's well-known IThumbnailProvider
+; category; {9F3A1B2C-...} is OccluView's implementation CLSID.
+
+[HKEY_CLASSES_ROOT\CLSID\{9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}]
+@="OccluView Thumbnail Provider"
+
+[HKEY_CLASSES_ROOT\CLSID\{9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}\InprocServer32]
+@="<DLL_PATH>"
+"ThreadingModel"="Both"
+
+[HKEY_CLASSES_ROOT\.stl\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}]
+@="{9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}"
+
+[HKEY_CLASSES_ROOT\.ply\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}]
+@="{9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}"
+
+[HKEY_CLASSES_ROOT\.obj\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}]
+@="{9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}"
+
+[HKEY_CLASSES_ROOT\.gltf\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}]
+@="{9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}"
+
+[HKEY_CLASSES_ROOT\.glb\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}]
+@="{9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}"
