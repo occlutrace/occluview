@@ -14,6 +14,16 @@ Windows Registry Editor Version 5.00
 ;   HKCR\<ext>\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}
 ;       (default) = {9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}
 ;
+;   HKCR\OccluView.Mesh                      (the ProgID)
+;       (default) = "OccluView 3D Mesh"
+;       DefaultIcon = "<APP_EXE_PATH>,0"
+;       shell\open\command = "<APP_EXE_PATH>" "%1"
+;   HKCR\<ext>\OpenWithProgids
+;       OccluView.Mesh = ""
+;
+; Replace <DLL_PATH> with the absolute path to occluview_shell.dll and
+; <APP_EXE_PATH> with the absolute path to occluview-app.exe before importing.
+;
 ; The {E357FCCD-...} CLSID is the shell's well-known IThumbnailProvider
 ; category; {9F3A1B2C-...} is OccluView's implementation CLSID.
 
@@ -38,3 +48,33 @@ Windows Registry Editor Version 5.00
 
 [HKEY_CLASSES_ROOT\.glb\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}]
 @="{9F3A1B2C-4D5E-4F60-8A7B-9C0D1E2F3045}"
+
+; --- "Open with" ProgID registration ---
+
+[HKEY_CLASSES_ROOT\OccluView.Mesh]
+@="OccluView 3D Mesh"
+
+[HKEY_CLASSES_ROOT\OccluView.Mesh\DefaultIcon]
+@="<APP_EXE_PATH>,0"
+
+[HKEY_CLASSES_ROOT\OccluView.Mesh\shell]
+
+[HKEY_CLASSES_ROOT\OccluView.Mesh\shell\open]
+
+[HKEY_CLASSES_ROOT\OccluView.Mesh\shell\open\command]
+@="\"<APP_EXE_PATH>\" \"%1\""
+
+[HKEY_CLASSES_ROOT\.stl\OpenWithProgids]
+"OccluView.Mesh"=""
+
+[HKEY_CLASSES_ROOT\.ply\OpenWithProgids]
+"OccluView.Mesh"=""
+
+[HKEY_CLASSES_ROOT\.obj\OpenWithProgids]
+"OccluView.Mesh"=""
+
+[HKEY_CLASSES_ROOT\.gltf\OpenWithProgids]
+"OccluView.Mesh"=""
+
+[HKEY_CLASSES_ROOT\.glb\OpenWithProgids]
+"OccluView.Mesh"=""

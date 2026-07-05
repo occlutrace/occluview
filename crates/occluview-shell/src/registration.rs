@@ -2,8 +2,9 @@
 //!
 //! `regsvr32 occluview_shell.dll` runs `DllRegisterServer`, which writes the
 //! registry entries that make Windows Explorer activate our thumbnail provider
-//! for each supported extension. `DllUnregisterServer` (via `regsvr32 /u`)
-//! removes them.
+//! for each supported extension, AND registers the "Open with" ProgID so the
+//! shell offers OccluView in the context menu. `DllUnregisterServer` (via
+//! `regsvr32 /u`) removes them.
 //!
 //! The registration layout (ADR-0005):
 //!
@@ -15,6 +16,16 @@
 //!         ThreadingModel = "Both"
 //! HKCR\.stl\ShellEx\{E357FCCD-A995-4576-B01F-234630154E96}
 //!     (default) = "{OCCLUVIEW_THUMBNAIL_CLSID}"
+//! ... (one entry per supported extension)
+//!
+//! HKCR\OccluView.Mesh                      (the ProgID)
+//!     (default) = "OccluView 3D Mesh"
+//!     DefaultIcon
+//!         (default) = "<app.exe>,0"
+//!     shell\open\command
+//!         (default) = "<app.exe>" "%1"
+//! HKCR\.stl\OpenWithProgids
+//!     OccluView.Mesh = ""                  (REG_SZ, presence is what counts)
 //! ... (one entry per supported extension)
 //! ```
 //!
@@ -42,6 +53,7 @@
 use crate::com::OCCLUVIEW_THUMBNAIL_CLSID;
 use crate::{SUPPORTED_EXTENSIONS, THUMBNAIL_PROVIDER_CATEGORY};
 use windows::core::{h, HRESULT, HSTRING, PCWSTR};
+use windows::Win32::Storage::FileSystem::GetFileAttributesW;
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
 use windows::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyW, RegDeleteTreeW, RegSetValueExW, HKEY, HKEY_CLASSES_ROOT, REG_SZ,
@@ -57,6 +69,19 @@ const ERROR_FILE_NOT_FOUND: u32 = 2;
 /// Static HSTRINGs via the `h!` macro (the macro yields `&'static HSTRING`).
 const FRIENDLY_NAME_H: &HSTRING = h!("OccluView Thumbnail Provider");
 const THREADING_MODEL_H: &HSTRING = h!("Both");
+
+/// The OccluView ProgID — the "Open with" association identifier.
+///
+/// Registered under `HKCR\OccluView.Mesh` with a `shell\open\command` that
+/// launches the app, and referenced from each `.<ext>\OpenWithProgids` so
+/// the shell offers "OccluView" in the context menu for supported files.
+pub const OCCLUVIEW_PROGID: &str = "OccluView.Mesh";
+
+/// Friendly name shown for the ProgID in `regedit` / `Open with`.
+const PROGID_FRIENDLY_H: &HSTRING = h!("OccluView 3D Mesh");
+
+/// The app binary name (looked up next to this DLL).
+const APP_EXE_NAME: &str = "occluview-app.exe";
 
 /// `regsvr32 occluview_shell.dll` calls this. Creates all registry entries.
 #[no_mangle]
@@ -84,12 +109,29 @@ pub extern "system" fn DllUnregisterServer() -> HRESULT {
 
 /// Write every registry entry. Idempotent — re-running over existing entries
 /// is a no-op (RegCreateKeyW opens existing keys).
+///
+/// The "Open with" ProgID registration is only written when the app exe is
+/// found next to this DLL (same directory); otherwise it's skipped silently
+/// so the thumbnail registration still succeeds. The installer is expected
+/// to place both binaries together.
 fn register_all() -> windows::core::Result<()> {
     let dll_path = own_dll_path();
     register_clsid(&dll_path)?;
     let our_clsid = HSTRING::from(OCCLUVIEW_THUMBNAIL_CLSID);
     for &ext in SUPPORTED_EXTENSIONS {
         register_extension(ext, &our_clsid)?;
+    }
+    if let Some(app_path) = app_exe_path(&dll_path) {
+        register_progid(&app_path)?;
+        let progid = HSTRING::from(OCCLUVIEW_PROGID);
+        for &ext in SUPPORTED_EXTENSIONS {
+            register_open_with(ext, &progid)?;
+        }
+    } else {
+        tracing::warn!(
+            "app exe '{}' not found next to DLL; skipping Open-with ProgID registration",
+            APP_EXE_NAME
+        );
     }
     Ok(())
 }
@@ -98,10 +140,11 @@ fn register_all() -> windows::core::Result<()> {
 fn unregister_all() -> windows::core::Result<()> {
     unregister_clsid()?;
     for &ext in SUPPORTED_EXTENSIONS {
-        // Missing extension entry is fine (user may have deleted it); ignore
-        // the not-found result.
+        // Missing entry is fine (user may have deleted it); ignore not-found.
         let _ = unregister_extension(ext);
+        let _ = unregister_open_with(ext);
     }
+    let _ = unregister_progid();
     Ok(())
 }
 
@@ -154,6 +197,83 @@ fn unregister_clsid() -> windows::core::Result<()> {
 fn unregister_extension(ext: &str) -> windows::core::Result<()> {
     let key_path = HSTRING::from(format!(".{ext}\\ShellEx\\{THUMBNAIL_PROVIDER_CATEGORY}"));
     delete_tree(&key_path)
+}
+
+/// Resolve the app exe path: same directory as `dll_path`, with
+/// [`APP_EXE_NAME`]. Returns `None` if the file does not exist.
+fn app_exe_path(dll_path: &HSTRING) -> Option<HSTRING> {
+    let wide = dll_path.as_wide();
+    // Find the last path separator (backslash).
+    let sep = wide.iter().rposition(|&c| c == u16::from(b'\\'))?;
+    let dir = &wide[..=sep];
+    let exe_name: Vec<u16> = APP_EXE_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut full = dir.to_vec();
+    full.extend_from_slice(&exe_name);
+    let full = HSTRING::from_wide(&full[..full.len() - 1]).ok()?;
+    // Existence check via GetFileAttributesW (avoid pulling std::fs for cfg).
+    // SAFETY: full is a valid NUL-terminated wide path.
+    let attrs = unsafe { GetFileAttributesW(PCWSTR(full.as_ptr())) };
+    // INVALID_FILE_ATTRIBUTES == 0xFFFFFFFF (-1 as u32).
+    if attrs == u32::MAX {
+        return None;
+    }
+    Some(full)
+}
+
+/// Register the ProgID `OccluView.Mesh` with `shell\open\command` and
+/// `DefaultIcon` pointing at the app exe.
+fn register_progid(app_path: &HSTRING) -> windows::core::Result<()> {
+    let progid = HSTRING::from(OCCLUVIEW_PROGID);
+    // Top-level: friendly name.
+    let hk = create_key(&progid)?;
+    set_string(hk, None, PROGID_FRIENDLY_H)?;
+    let _ = unsafe { RegCloseKey(hk) };
+
+    // DefaultIcon: "<app.exe>,0"
+    let icon_key = HSTRING::from(format!("{OCCLUVIEW_PROGID}\\DefaultIcon"));
+    let hk = create_key(&icon_key)?;
+    let icon_val = HSTRING::from(format!("{},0", utf16_to_string(app_path)));
+    set_string(hk, None, &icon_val)?;
+    let _ = unsafe { RegCloseKey(hk) };
+
+    // shell\open\command: "<app.exe>" "%1"
+    let cmd_key = HSTRING::from(format!("{OCCLUVIEW_PROGID}\\shell\\open\\command"));
+    let hk = create_key(&cmd_key)?;
+    let cmd_val = HSTRING::from(format!("\"{}\" \"%1\"", utf16_to_string(app_path)));
+    set_string(hk, None, &cmd_val)?;
+    let _ = unsafe { RegCloseKey(hk) };
+    Ok(())
+}
+
+/// Remove the ProgID entirely (cascades to DefaultIcon, shell\open\command).
+fn unregister_progid() -> windows::core::Result<()> {
+    let progid = HSTRING::from(OCCLUVIEW_PROGID);
+    delete_tree(&progid)
+}
+
+/// Register `HKCR\.{ext}\OpenWithProgids` with the ProgID as a named value.
+/// The value data is empty string; the shell keys on the value *name*.
+fn register_open_with(ext: &str, progid: &HSTRING) -> windows::core::Result<()> {
+    let key_path = HSTRING::from(format!(".{ext}\\OpenWithProgids"));
+    let hk = create_key(&key_path)?;
+    let empty = HSTRING::new();
+    set_string(hk, Some(progid), &empty)?;
+    let _ = unsafe { RegCloseKey(hk) };
+    Ok(())
+}
+
+/// Remove `HKCR\.{ext}\OpenWithProgids`.
+fn unregister_open_with(ext: &str) -> windows::core::Result<()> {
+    let key_path = HSTRING::from(format!(".{ext}\\OpenWithProgids"));
+    delete_tree(&key_path)
+}
+
+/// Best-effort HSTRING → String for assembling registry command lines. Lossy
+/// on non-UTF-16 paths (uses replacement char), which is acceptable for the
+/// diagnostics/assembly path; the actual registration uses the original
+/// HSTRING bytes when it matters.
+fn utf16_to_string(s: &HSTRING) -> String {
+    String::from_utf16_lossy(s.as_wide())
 }
 
 /// Create or open a registry key under HKCR, returning the handle. Errors
