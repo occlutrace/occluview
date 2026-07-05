@@ -28,6 +28,7 @@
 #![cfg_attr(test, allow(clippy::float_cmp))]
 
 pub mod camera;
+pub mod clipping;
 pub mod error;
 pub mod gpu;
 pub mod mesh_uniform;
@@ -36,6 +37,7 @@ pub mod pipeline;
 pub mod texture;
 
 pub use camera::GpuCamera;
+pub use clipping::{ClipPlane, CutViewSpec};
 pub use error::RenderError;
 pub use gpu::GpuMesh;
 pub use mesh_uniform::GpuMeshUniform;

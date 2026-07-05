@@ -2,6 +2,7 @@
 //! tests. One render target + depth, one draw, read back as RGBA8.
 
 use crate::camera::GpuCamera;
+use crate::clipping::ClipPlane;
 use crate::error::RenderError;
 use crate::gpu::GpuMesh;
 use crate::mesh_uniform::GpuMeshUniform;
@@ -161,6 +162,113 @@ impl Offscreen {
         &self.renderer
     }
 
+    /// Render `mesh` with an active clip plane (Approach A — fragment discard
+    /// only, no stencil cap). This is the "hollow cut" preview: fragments
+    /// below the plane are discarded, leaving the cut surface open.
+    ///
+    /// Used by the cut-view widget and the `cut_triangle_discard` golden test.
+    /// The full 3-pass stencil-capped render lands in a follow-up
+    /// (`render_with_cut`).
+    ///
+    /// # Errors
+    /// - [`RenderError::Surface`] on device loss or buffer-map failure.
+    #[allow(clippy::unused_async)]
+    pub async fn render_clipped(
+        &self,
+        mesh: &Mesh,
+        camera: &GpuCamera,
+        clip: &ClipPlane,
+        spec: ThumbnailSpec,
+    ) -> Result<Vec<u8>, RenderError> {
+        let size = u32::from(spec.size_px);
+        let device = self.renderer.device();
+        let queue = self.renderer.queue();
+
+        let (color_texture, color_view) = make_color_target(device, size);
+        let (_depth_texture, depth_view) =
+            make_depth_target(device, size, self.renderer.depth_format());
+
+        let gpu_mesh = GpuMesh::upload(device, queue, mesh);
+        self.renderer.set_camera(camera);
+        let camera_bg = self.renderer.camera_bind_group();
+
+        // Active clip plane uniform + bind group.
+        let clip_buf = self.renderer.clip_uniform_buffer();
+        queue.write_buffer(&clip_buf, 0, bytemuck::bytes_of(clip));
+        let clip_bg = self.renderer.clip_bind_group(&clip_buf);
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("occluview clipped encoder"),
+        });
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("occluview clipped pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &color_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: spec.background[0],
+                        g: spec.background[1],
+                        b: spec.background[2],
+                        a: spec.background[3],
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(0),
+                    store: wgpu::StoreOp::Store,
+                }),
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        self.renderer.draw(
+            &mut rpass,
+            &camera_bg,
+            &self.mesh_bind_group,
+            &self.texture_bind_group,
+            &clip_bg,
+            &gpu_mesh,
+            mesh.kind(),
+        );
+        drop(rpass);
+
+        let padded = padded_bytes_per_row(size);
+        let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("occluview clipped readback"),
+            size: u64::from(padded) * u64::from(size),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        encoder.copy_texture_to_buffer(
+            wgpu::ImageCopyTexture {
+                texture: &color_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::ImageCopyBuffer {
+                buffer: &output_buffer,
+                layout: wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded),
+                    rows_per_image: Some(size),
+                },
+            },
+            extent(size),
+        );
+        queue.submit(std::iter::once(encoder.finish()));
+
+        Ok(self.read_back(&output_buffer, padded, spec.size_px))
+    }
+
     /// Access the cached fallback texture bind group (group 2). Useful for
     /// multi-mesh draws where some meshes are untextured.
     pub fn fallback_texture_bind_group(&self) -> &wgpu::BindGroup {
@@ -255,15 +363,20 @@ impl Offscreen {
                     load: wgpu::LoadOp::Clear(1.0),
                     store: wgpu::StoreOp::Store,
                 }),
-                stencil_ops: None,
+                stencil_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(0),
+                    store: wgpu::StoreOp::Store,
+                }),
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
         });
+        let clip_bg = self.renderer.disabled_clip_bind_group();
         for (i, (gpu_mesh, _, mesh_bg, kind)) in uploaded.iter().enumerate() {
             let tex_bg = tex_bgs[i].unwrap_or(&self.texture_bind_group);
-            self.renderer
-                .draw(&mut rpass, &camera_bg, mesh_bg, tex_bg, gpu_mesh, *kind);
+            self.renderer.draw(
+                &mut rpass, &camera_bg, mesh_bg, tex_bg, clip_bg, gpu_mesh, *kind,
+            );
         }
         drop(rpass);
 
@@ -330,13 +443,25 @@ impl Offscreen {
                     load: wgpu::LoadOp::Clear(1.0),
                     store: wgpu::StoreOp::Store,
                 }),
-                stencil_ops: None,
+                // Clear stencil to 0 so the disabled-clip draw is a no-op on
+                // the stencil plane (cut-view passes override this).
+                stencil_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(0),
+                    store: wgpu::StoreOp::Store,
+                }),
             }),
             timestamp_writes: None,
             occlusion_query_set: None,
         });
-        self.renderer
-            .draw(&mut rpass, camera_bg, mesh_bg, texture_bg, mesh, kind);
+        self.renderer.draw(
+            &mut rpass,
+            camera_bg,
+            mesh_bg,
+            texture_bg,
+            self.renderer.disabled_clip_bind_group(),
+            mesh,
+            kind,
+        );
     }
 
     fn read_back(

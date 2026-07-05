@@ -5,6 +5,7 @@
 //! inside a render pass.
 
 use crate::camera::GpuCamera;
+use crate::clipping::ClipPlane;
 use crate::error::RenderError;
 use crate::gpu::{camera_bind_layout, GpuMesh};
 use crate::mesh_uniform::GpuMeshUniform;
@@ -27,6 +28,15 @@ pub struct Renderer {
     pub(crate) mesh_layout: wgpu::BindGroupLayout,
     /// Layout for the texture + sampler (group 2).
     pub(crate) texture_layout: wgpu::BindGroupLayout,
+    /// Layout for the clip plane (group 3): `ClipPlane` uniform.
+    pub(crate) clip_layout: wgpu::BindGroupLayout,
+    /// Cached disabled clip-plane buffer + bind group. Bound at group 3 for
+    /// all draws that don't actually clip (thumbnails, plain renders) so the
+    /// shader's `clip.enabled == 0` branch runs. Kept alive behind `dead_code`
+    /// because the bind group borrows the buffer.
+    #[allow(dead_code)]
+    pub(crate) clip_buffer_disabled: wgpu::Buffer,
+    pub(crate) clip_bind_group_disabled: wgpu::BindGroup,
     pub(crate) depth_format: wgpu::TextureFormat,
 }
 
@@ -79,7 +89,10 @@ impl Renderer {
         queue: wgpu::Queue,
         target_format: wgpu::TextureFormat,
     ) -> Result<Self, RenderError> {
-        let depth_format = wgpu::TextureFormat::Depth32Float;
+        // Depth24PlusStencil8 provides both a depth buffer and an 8-bit stencil
+        // plane. The stencil plane is required for cross-section capping
+        // (ADR-0011); Depth32Float has no stencil. WARP-safe (core WebGPU).
+        let depth_format = wgpu::TextureFormat::Depth24PlusStencil8;
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("occluview mesh shader"),
@@ -89,9 +102,10 @@ impl Renderer {
         let camera_layout = camera_bind_layout(&device);
         let mesh_layout = mesh_uniform_bind_layout(&device);
         let texture_layout = texture_bind_layout(&device);
+        let clip_layout = clip_plane_bind_layout(&device);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("occluview pipeline layout"),
-            bind_group_layouts: &[&camera_layout, &mesh_layout, &texture_layout],
+            bind_group_layouts: &[&camera_layout, &mesh_layout, &texture_layout, &clip_layout],
             push_constant_ranges: &[],
         });
 
@@ -180,6 +194,28 @@ impl Renderer {
             mapped_at_creation: false,
         });
 
+        // Cached disabled clip-plane buffer: clip.enabled = 0 → no clipping.
+        // Bound at group 3 for non-cut draws so the shader's branch is a no-op.
+        let clip_buffer_disabled = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("occluview clip plane (disabled)"),
+            size: size_of::<ClipPlane>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(
+            &clip_buffer_disabled,
+            0,
+            bytemuck::bytes_of(&ClipPlane::disabled()),
+        );
+        let clip_bind_group_disabled = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("occluview clip bind group (disabled)"),
+            layout: &clip_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: clip_buffer_disabled.as_entire_binding(),
+            }],
+        });
+
         Ok(Self {
             device,
             queue,
@@ -189,6 +225,9 @@ impl Renderer {
             camera_buffer,
             mesh_layout,
             texture_layout,
+            clip_layout,
+            clip_buffer_disabled,
+            clip_bind_group_disabled,
             depth_format,
         })
     }
@@ -248,14 +287,45 @@ impl Renderer {
         &self.mesh_layout
     }
 
+    /// Create a uniform buffer + bind group for a [`ClipPlane`] (group 3).
+    /// Caller writes the plane into the returned buffer before each frame.
+    pub fn clip_uniform_buffer(&self) -> wgpu::Buffer {
+        self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("occluview clip plane uniform"),
+            size: size_of::<ClipPlane>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        })
+    }
+
+    /// Build the clip-plane bind group (group 3) bound to `uniform_buffer`.
+    pub fn clip_bind_group(&self, uniform_buffer: &wgpu::Buffer) -> wgpu::BindGroup {
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("occluview clip bind group"),
+            layout: &self.clip_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        })
+    }
+
+    /// The cached disabled-clip bind group — bound at group 3 for draws that
+    /// don't clip (thumbnails, plain renders). Use this instead of building a
+    /// fresh group when `clip.enabled == 0`.
+    pub fn disabled_clip_bind_group(&self) -> &wgpu::BindGroup {
+        &self.clip_bind_group_disabled
+    }
+
     /// Issue the draw for one mesh inside a render pass. Caller has already
     /// begun the pass against a color+depth view, set the camera, and will
     /// submit the encoder. Picks the triangle or point pipeline by `kind`.
     ///
     /// `mesh_bg` is the per-mesh uniform bind group (group 1); `texture_bg`
     /// is the texture+sampler bind group (group 2). For untextured meshes,
-    /// pass a 1×1 white fallback texture bind group — the shader's
-    /// `has_texture=0` branch won't sample it.
+    /// pass a 1×1 white fallback texture bind group. `clip_bg` (group 3) is
+    /// the clip-plane bind group — pass `disabled_clip_bind_group()` for no
+    /// clipping.
     #[allow(clippy::too_many_arguments)]
     pub fn draw<'a>(
         &'a self,
@@ -263,6 +333,7 @@ impl Renderer {
         camera_bg: &'a wgpu::BindGroup,
         mesh_bg: &'a wgpu::BindGroup,
         texture_bg: &'a wgpu::BindGroup,
+        clip_bg: &'a wgpu::BindGroup,
         mesh: &'a GpuMesh,
         kind: occluview_core::MeshKind,
     ) {
@@ -274,6 +345,7 @@ impl Renderer {
         rpass.set_bind_group(0, camera_bg, &[]);
         rpass.set_bind_group(1, mesh_bg, &[]);
         rpass.set_bind_group(2, texture_bg, &[]);
+        rpass.set_bind_group(3, clip_bg, &[]);
         mesh.draw(rpass, kind);
     }
 
@@ -305,6 +377,25 @@ fn mesh_uniform_bind_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                 ty: wgpu::BufferBindingType::Uniform,
                 has_dynamic_offset: false,
                 min_binding_size: wgpu::BufferSize::new(size_of::<GpuMeshUniform>() as u64),
+            },
+            count: None,
+        }],
+    })
+}
+
+/// Bind group layout for the clip plane (group 3): one uniform buffer
+/// holding a [`ClipPlane`], visible to the fragment stage (where discard
+/// happens) and vertex stage (future: vertex-side clip distances).
+fn clip_plane_bind_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("occluview clip plane layout"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: wgpu::BufferSize::new(size_of::<ClipPlane>() as u64),
             },
             count: None,
         }],

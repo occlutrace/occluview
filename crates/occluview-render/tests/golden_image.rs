@@ -10,7 +10,9 @@
 
 use glam::{Mat4, Vec3};
 use occluview_core::{Mesh, MeshBuilder, MeshTexture, Vertex};
-use occluview_render::{GpuCamera, GpuMeshUniform, GpuTexture, Offscreen, ThumbnailSpec};
+use occluview_render::{
+    ClipPlane, GpuCamera, GpuMeshUniform, GpuTexture, Offscreen, ThumbnailSpec,
+};
 
 const SIZE: u16 = 64;
 const TOLERANCE: u8 = 8; // per-channel diff allowed
@@ -218,6 +220,65 @@ fn textured_triangle_renders_checkerboard() {
         red_dominant > 5 && green_dominant > 5,
         "checkerboard not visible: red={red_dominant} green={green_dominant} \
          (expected both > 5 — texture sampling may be broken)"
+    );
+}
+
+/// Validates the clip-plane discard (Approach A, "hollow cut") on WARP. A
+/// triangle centered at the origin is clipped by a plane at `distance = 0`
+/// with normal `+Z` pointing toward the camera — the back half is discarded,
+/// leaving fewer visible pixels than the unclipped triangle. Verifies the
+/// WGSL `discard` branch and the ClipPlane uniform binding work end-to-end.
+#[test]
+fn cut_triangle_discard_removes_pixels() {
+    let mesh = triangle_mesh();
+    let cam = camera_looking_at_origin();
+    let offscreen = pollster::block_on(Offscreen::new()).expect("offscreen init");
+
+    // Render unclipped first to count the baseline pixels.
+    let spec = ThumbnailSpec {
+        size_px: SIZE,
+        ..Default::default()
+    };
+    let full_pixels = pollster::block_on(offscreen.render(&mesh, &cam, spec)).expect("full render");
+    let full_visible = full_pixels
+        .chunks_exact(4)
+        .filter(|px| px[0] > 50 || px[1] > 50 || px[2] > 50)
+        .count();
+
+    // Render clipped: plane normal +Y, distance 0 — discards the top half
+    // of the triangle (where world Y > 0).
+    let clip = ClipPlane::new([0.0, 1.0, 0.0], 0.0);
+    let cut_pixels =
+        pollster::block_on(offscreen.render_clipped(&mesh, &cam, &clip, spec)).expect("cut render");
+    let cut_visible = cut_pixels
+        .chunks_exact(4)
+        .filter(|px| px[0] > 50 || px[1] > 50 || px[2] > 50)
+        .count();
+
+    // The cut must remove a meaningful fraction of pixels (the top half),
+    // but leave some (the bottom half). Use a loose bound to tolerate
+    // rasterization edge effects.
+    assert!(
+        cut_visible < full_visible * 3 / 4,
+        "clip did not remove pixels: full={full_visible} cut={cut_visible}"
+    );
+    assert!(
+        cut_visible > full_visible / 8,
+        "clip removed too much (expected roughly half): full={full_visible} cut={cut_visible}"
+    );
+
+    // A disabled clip plane must reproduce the full render.
+    let disabled = ClipPlane::disabled();
+    let identity_pixels =
+        pollster::block_on(offscreen.render_clipped(&mesh, &cam, &disabled, spec))
+            .expect("identity");
+    let identity_visible = identity_pixels
+        .chunks_exact(4)
+        .filter(|px| px[0] > 50 || px[1] > 50 || px[2] > 50)
+        .count();
+    assert_eq!(
+        identity_visible, full_visible,
+        "disabled clip plane did not match unclipped render"
     );
 }
 

@@ -37,6 +37,17 @@ struct MeshUniform {
 @group(2) @binding(0) var mesh_texture: texture_2d<f32>;
 @group(2) @binding(1) var mesh_sampler: sampler;
 
+// Cross-section clipping plane (group 3). When enabled, fragments on the
+// "below" side of the plane (dot(world_pos, normal) - distance < 0) are
+// discarded. ADR-0011.
+struct ClipPlane {
+    normal: vec3<f32>,
+    distance: f32,
+    enabled: u32,
+    _pad: u32,
+}
+@group(3) @binding(0) var<uniform> clip: ClipPlane;
+
 struct VertexIn {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -49,6 +60,7 @@ struct VertexOut {
     @location(0) color: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
+    @location(3) world_pos: vec3<f32>,
 };
 
 @vertex
@@ -69,11 +81,16 @@ fn vs_main(in: VertexIn) -> VertexOut {
     // the inverse-transpose, which OccluView does not use for scene placement.
     out.normal = (mesh_uniform.model * vec4<f32>(in.normal, 0.0)).xyz;
     out.uv = in.uv;
+    out.world_pos = world_pos.xyz;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+    // Cross-section: discard fragments below the clip plane.
+    if (clip.enabled != 0u && dot(in.world_pos, clip.normal) - clip.distance < 0.0) {
+        discard;
+    }
     // Lambertian shading with a soft ambient. If the normal is zero (STL with
     // no normals), fall back to a flat mid-grey so the silhouette is visible.
     var n = in.normal;
