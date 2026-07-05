@@ -310,6 +310,32 @@ fn cut_triangle_capped_renders() {
     assert!(non_bg > 0, "capped cut rendered nothing visible");
 }
 
+/// Validates the convenience entry point `render_cut_view` — auto-frames an
+/// orthographic camera along the plane normal and renders the solid cut.
+/// Proves the full cut-view pipeline (camera + clip + stencil cap) runs
+/// end-to-end on WARP without crashing.
+#[test]
+fn render_cut_view_end_to_end() {
+    let mesh = triangle_mesh();
+    let offscreen = pollster::block_on(Offscreen::new()).expect("offscreen init");
+    let cut = occluview_render::CutViewSpec {
+        plane: ClipPlane::new([0.0, 0.0, 1.0], 0.0),
+        cap_color: [1.0, 0.0, 0.0, 1.0],
+        show_hollow: false,
+    };
+    let spec = ThumbnailSpec {
+        size_px: SIZE,
+        ..Default::default()
+    };
+    let pixels =
+        pollster::block_on(offscreen.render_cut_view(&mesh, &cut, spec)).expect("render_cut_view");
+    let non_bg = pixels
+        .chunks_exact(4)
+        .filter(|px| px[0] > 50 || px[1] > 50 || px[2] > 50)
+        .count();
+    assert!(non_bg > 0, "render_cut_view produced nothing visible");
+}
+
 fn render_point_cloud_to_pixels() -> Vec<u8> {
     let mesh = point_cloud_mesh();
     let cam = camera_looking_at_origin();

@@ -269,6 +269,27 @@ impl Offscreen {
         Ok(self.read_back(&output_buffer, padded, spec.size_px))
     }
 
+    /// Convenience: render a cut view with an auto-framed orthographic camera.
+    /// Computes the cut-view camera from the mesh bbox + clip plane, then calls
+    /// [`render_with_cut`](Self::render_with_cut). This is the one-call entry
+    /// point the egui widget uses.
+    ///
+    /// # Errors
+    /// - [`RenderError::Surface`] on device loss or buffer-map failure.
+    #[allow(clippy::unused_async)]
+    pub async fn render_cut_view(
+        &self,
+        mesh: &Mesh,
+        cut: &crate::clipping::CutViewSpec,
+        spec: ThumbnailSpec,
+    ) -> Result<Vec<u8>, RenderError> {
+        let bbox = mesh.bbox_uncached();
+        let camera = crate::cut_camera::cut_view_camera(&cut.plane, bbox);
+        let half_extent = bbox.half_diagonal() * 2.0;
+        self.render_with_cut(mesh, &camera, cut, half_extent, spec)
+            .await
+    }
+
     /// Render `mesh` with a **solid** cross-section cut (Approach B,
     /// stencil-capped, ADR-0011). The visible mesh is clipped by the plane
     /// (fragments below discarded), and the cut surface is filled with a cap
@@ -282,7 +303,11 @@ impl Offscreen {
     ///
     /// # Errors
     /// - [`RenderError::Surface`] on device loss or buffer-map failure.
-    #[allow(clippy::unused_async, clippy::too_many_lines, clippy::too_many_arguments)]
+    #[allow(
+        clippy::unused_async,
+        clippy::too_many_lines,
+        clippy::too_many_arguments
+    )]
     pub async fn render_with_cut(
         &self,
         mesh: &Mesh,

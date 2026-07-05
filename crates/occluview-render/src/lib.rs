@@ -29,6 +29,7 @@
 
 pub mod camera;
 pub mod clipping;
+pub mod cut_camera;
 pub mod error;
 pub mod gpu;
 pub mod mesh_uniform;
@@ -38,6 +39,7 @@ pub mod texture;
 
 pub use camera::GpuCamera;
 pub use clipping::{ClipPlane, CutViewSpec};
+pub use cut_camera::cut_view_camera;
 pub use error::RenderError;
 pub use gpu::GpuMesh;
 pub use mesh_uniform::GpuMeshUniform;
