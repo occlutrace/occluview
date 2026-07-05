@@ -77,6 +77,48 @@ impl ClipPlane {
             pad: [0, 0, 0],
         }
     }
+
+    /// **Axial** preset (transverse/horizontal cut): normal = `+Y`, the
+    /// chewing-surface plane. Distance 0 = through the bbox center. Positive
+    /// distance moves the cut upward (toward the crown tips). This is the
+    /// primary dental cross-section view.
+    ///
+    /// `offset_mm` is relative to the bbox center, in millimeters.
+    #[must_use]
+    pub fn axial(offset_mm: f32) -> Self {
+        Self::new([0.0, 1.0, 0.0], offset_mm)
+    }
+
+    /// **Coronal** preset (frontal cut): normal = `+Z`, the buccal-lingual
+    /// plane. Distance 0 = through the bbox center.
+    #[must_use]
+    pub fn coronal(offset_mm: f32) -> Self {
+        Self::new([0.0, 0.0, 1.0], offset_mm)
+    }
+
+    /// **Sagittal** preset (midline cut): normal = `+X`, the mesial-distal
+    /// plane. Distance 0 = through the bbox center (midline).
+    #[must_use]
+    pub fn sagittal(offset_mm: f32) -> Self {
+        Self::new([1.0, 0.0, 0.0], offset_mm)
+    }
+
+    /// **Custom** preset: a plane rotated by yaw (around Y) and pitch (around
+    /// X) from the axial (`+Y` normal) orientation, for oblique cuts.
+    ///
+    /// `yaw_rad` / `pitch_rad` are in radians. At (0, 0) the normal is `+Y`
+    /// (same as axial). Pitch=90° rotates `+Y` to `+Z`; yaw then rotates the
+    /// horizontal component around Y.
+    #[must_use]
+    pub fn custom(yaw_rad: f32, pitch_rad: f32, offset_mm: f32) -> Self {
+        // Start from +Y = [0,1,0]. Pitch around X: Y -> [0, cos(p), sin(p)].
+        // Yaw around Y rotates the (x,z) components: x = sin(y)*sin(p),
+        // z = cos(y)*sin(p), y unchanged = cos(p).
+        let sp = pitch_rad.sin();
+        let cp = pitch_rad.cos();
+        let n = [yaw_rad.sin() * sp, cp, yaw_rad.cos() * sp];
+        Self::new(n, offset_mm)
+    }
 }
 
 impl Default for ClipPlane {
@@ -271,6 +313,56 @@ mod tests {
         for v in &verts {
             assert!(v[1].abs() < 1e-5, "vert not in plane: {v:?}");
         }
+    }
+
+    #[test]
+    fn axial_preset_is_y_normal() {
+        let p = ClipPlane::axial(0.0);
+        assert_eq!(p.normal, [0.0, 1.0, 0.0]);
+        assert_eq!(p.enabled, 1);
+    }
+
+    #[test]
+    fn coronal_preset_is_z_normal() {
+        let p = ClipPlane::coronal(5.0);
+        assert_eq!(p.normal, [0.0, 0.0, 1.0]);
+        assert_eq!(p.distance, 5.0);
+    }
+
+    #[test]
+    fn sagittal_preset_is_x_normal() {
+        let p = ClipPlane::sagittal(-3.0);
+        assert_eq!(p.normal, [1.0, 0.0, 0.0]);
+        assert_eq!(p.distance, -3.0);
+    }
+
+    #[test]
+    fn custom_preset_at_zero_rotation_is_axial() {
+        // yaw=0, pitch=0 should give +Y normal (same as axial).
+        let p = ClipPlane::custom(0.0, 0.0, 0.0);
+        assert!((p.normal[0]).abs() < 1e-5);
+        assert!((p.normal[1] - 1.0).abs() < 1e-5);
+        assert!((p.normal[2]).abs() < 1e-5);
+    }
+
+    #[test]
+    fn custom_preset_pitch_rotates_normal() {
+        // pitch = 90° should rotate +Y to +Z.
+        let p = ClipPlane::custom(0.0, std::f32::consts::FRAC_PI_2, 0.0);
+        assert!((p.normal[1]).abs() < 1e-5, "y should be ~0: {:?}", p.normal);
+        assert!(
+            (p.normal[2] - 1.0).abs() < 1e-5,
+            "z should be ~1: {:?}",
+            p.normal
+        );
+    }
+
+    #[test]
+    fn presets_are_enabled() {
+        assert_eq!(ClipPlane::axial(0.0).enabled, 1);
+        assert_eq!(ClipPlane::coronal(0.0).enabled, 1);
+        assert_eq!(ClipPlane::sagittal(0.0).enabled, 1);
+        assert_eq!(ClipPlane::custom(0.1, 0.1, 0.0).enabled, 1);
     }
 
     fn dot3(a: &[f32; 3], b: &[f32; 3]) -> f32 {
