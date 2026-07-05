@@ -26,6 +26,8 @@ pub(crate) enum FieldPlan {
     Normal(usize),
     /// Route to color channel (index 0..3 for r/g/b/a).
     Color(usize),
+    /// Route to UV coordinate component (index 0..1).
+    Uv(usize),
     /// Read but discard (unknown property like `confidence`).
     Skip,
 }
@@ -58,6 +60,11 @@ fn route(name: &str) -> FieldPlan {
         "green" | "g" => FieldPlan::Color(1),
         "blue" | "b" => FieldPlan::Color(2),
         "alpha" | "a" => FieldPlan::Color(3),
+        // UV property names. `s`/`t` are the common PLY UV names; `texture_u`/
+        // `texture_v` are used by some scanners. We avoid mapping bare `u`/`v`
+        // because they conflict with vertex-letter conventions in some files.
+        "s" | "texture_u" | "tu" => FieldPlan::Uv(0),
+        "t" | "texture_v" | "tv" => FieldPlan::Uv(1),
         _ => FieldPlan::Skip,
     }
 }
@@ -127,6 +134,9 @@ where
         if fields.color != [255, 255, 255, 255] {
             v = v.with_color(fields.color);
         }
+        if fields.uv != [0.0, 0.0] {
+            v = v.with_uv(fields.uv);
+        }
         builder.push_vertex(v);
     }
     Ok(())
@@ -138,6 +148,7 @@ struct VertexFields {
     position: [f32; 3],
     normal: [f32; 3],
     color: [u8; 4],
+    uv: [f32; 2],
 }
 
 impl Default for VertexFields {
@@ -147,6 +158,7 @@ impl Default for VertexFields {
             normal: [0.0; 3],
             // Default color is opaque white — matches Vertex's default.
             color: [255, 255, 255, 255],
+            uv: [0.0, 0.0],
         }
     }
 }
@@ -301,6 +313,7 @@ fn apply_scalar(
             match route {
                 FieldPlan::Position(i) if i < 3 => fields.position[i] = v,
                 FieldPlan::Normal(i) if i < 3 => fields.normal[i] = v,
+                FieldPlan::Uv(i) if i < 2 => fields.uv[i] = v,
                 _ => {}
             }
         }
@@ -495,5 +508,40 @@ end_header
         };
         apply_scalar("300", ScalarType::Uchar, FieldPlan::Color(0), &mut fields).unwrap();
         assert_eq!(fields.color[0], 255);
+    }
+
+    #[test]
+    fn uv_route_populates_uv_field() {
+        let mut fields = VertexFields::default();
+        apply_scalar("0.75", ScalarType::Float, FieldPlan::Uv(0), &mut fields).unwrap();
+        apply_scalar("0.25", ScalarType::Float, FieldPlan::Uv(1), &mut fields).unwrap();
+        assert_eq!(fields.uv, [0.75, 0.25]);
+    }
+
+    #[test]
+    fn ply_with_st_vertex_properties_reads_uvs() {
+        // A PLY with `s` and `t` float vertex properties.
+        let ply = b"ply
+format ascii 1.0
+element vertex 3
+property float x
+property float y
+property float z
+property float s
+property float t
+element face 1
+property list uchar uint vertex_indices
+end_header
+0 0 0 0.0 0.0
+1 0 0 1.0 0.0
+0 1 0 0.0 1.0
+3 0 1 2
+";
+        let mesh = crate::ply::read(ply).expect("PLY should parse");
+        assert!(mesh.has_uvs());
+        let vs = mesh.vertices();
+        assert_eq!(vs[0].uv, [0.0, 0.0]);
+        assert_eq!(vs[1].uv, [1.0, 0.0]);
+        assert_eq!(vs[2].uv, [0.0, 1.0]);
     }
 }

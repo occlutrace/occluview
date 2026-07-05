@@ -224,9 +224,10 @@ fn read_vertices(
         let mut position = [0.0_f32; 3];
         let mut normal = [0.0_f32; 3];
         let mut color = [255u8; 4];
+        let mut uv = [0.0_f32; 2];
         for (route, ty) in &plan {
             let v = cursor.read_scalar(*ty)?;
-            route_value(v, *route, &mut position, &mut normal, &mut color);
+            route_value(v, *route, &mut position, &mut normal, &mut color, &mut uv);
         }
         let mut vert = Vertex::at(Vec3::from_array(position));
         if normal.iter().any(|&n| n != 0.0) {
@@ -235,21 +236,27 @@ fn read_vertices(
         if color != [255, 255, 255, 255] {
             vert = vert.with_color(color);
         }
+        if uv != [0.0, 0.0] {
+            vert = vert.with_uv(uv);
+        }
         builder.push_vertex(vert);
     }
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn route_value(
     v: ScalarValue,
     route: FieldPlan,
     position: &mut [f32; 3],
     normal: &mut [f32; 3],
     color: &mut [u8; 4],
+    uv: &mut [f32; 2],
 ) {
     match (v, route) {
         (ScalarValue::Float(f), FieldPlan::Position(i)) if i < 3 => position[i] = f,
         (ScalarValue::Float(f), FieldPlan::Normal(i)) if i < 3 => normal[i] = f,
+        (ScalarValue::Float(f), FieldPlan::Uv(i)) if i < 2 => uv[i] = f,
         (ScalarValue::Int(n), FieldPlan::Color(i)) if i < 4 => {
             color[i] = n.clamp(0, 255) as u8;
         }

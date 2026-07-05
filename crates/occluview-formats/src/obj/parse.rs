@@ -65,11 +65,25 @@ where
     Ok(Vec3::new(nx, ny, nz))
 }
 
+/// Parse a `vt` line. Returns `[u, v]`. A `vt` with only one component is
+/// tolerated (v defaults to 0). Returns `None` if parsing fails — a malformed
+/// texcoord should not abort the whole file (OBJ files often have spurious vt).
+pub(super) fn texcoord_line<'a, I>(tokens: &mut I, line_no: usize, raw: &str) -> Option<[f32; 2]>
+where
+    I: Iterator<Item = &'a str>,
+{
+    let u = next_f32(tokens, line_no, raw).ok()?;
+    // The v component is optional per the spec; default 0.
+    let v = next_f32(tokens, line_no, raw).unwrap_or(0.0);
+    Some([u, v])
+}
+
 /// Parsed-so-far mesh data, passed into `face_line` to resolve indices.
 pub(super) struct MeshData<'a> {
     pub positions: &'a [Vec3],
     pub normals: &'a [Vec3],
     pub colors: &'a [[u8; 4]],
+    pub texcoords: &'a [[f32; 2]],
 }
 
 /// Parse an `f` line. Fan-triangulates polygons with >3 corners. Each face
@@ -92,6 +106,7 @@ where
     let positions = data.positions;
     let normals = data.normals;
     let colors = data.colors;
+    let texcoords = data.texcoords;
 
     // Collect the resolved vertex indices (into our `positions` slice) for the
     // whole face. Fan-triangulate once we have them.
@@ -100,7 +115,7 @@ where
         // A face vertex token may contain slashes: `v`, `v/vt`, `v//vn`, `v/vt/vn`.
         let mut parts = tok.split('/');
         let v_str = parts.next().unwrap_or("");
-        let _texcoord_str = parts.next(); // ignored for v1
+        let texcoord_idx_str = parts.next();
         let normal_idx_str = parts.next();
 
         let v_idx = resolve_index(v_str, positions.len(), line_no, raw)?;
@@ -108,6 +123,11 @@ where
         // (e.g. `v//vt` shape). Both mean: no normal.
         let normal = match normal_idx_str {
             Some(s) if !s.is_empty() => resolve_normal(s, normals),
+            _ => None,
+        };
+        // texcoord_idx_str follows the same lenient resolve as normals.
+        let uv = match texcoord_idx_str {
+            Some(s) if !s.is_empty() => resolve_texcoord(s, texcoords),
             _ => None,
         };
 
@@ -119,6 +139,9 @@ where
         }
         if color != [255, 255, 255, 255] {
             v = v.with_color(color);
+        }
+        if let Some(uv) = uv {
+            v = v.with_uv(uv);
         }
         let h = builder.push_vertex(v);
         face_vertex_idxs.push(h);
@@ -151,6 +174,19 @@ fn resolve_normal(s: &str, normals: &[Vec3]) -> Option<Vec3> {
         std::cmp::Ordering::Equal => return None,
     };
     normals.get(n_idx).copied()
+}
+
+/// Resolve a `vt` index string (1-based positive, or negative relative) to a
+/// UV pair. Returns `None` if the index is missing or out of range; in that
+/// case the face vertex is emitted without a UV.
+fn resolve_texcoord(s: &str, texcoords: &[[f32; 2]]) -> Option<[f32; 2]> {
+    let n: i64 = s.parse().ok()?;
+    let idx = match n.cmp(&0) {
+        std::cmp::Ordering::Greater => (n - 1) as usize,
+        std::cmp::Ordering::Less => texcoords.len().checked_sub(n.unsigned_abs() as usize)?,
+        std::cmp::Ordering::Equal => return None,
+    };
+    texcoords.get(idx).copied()
 }
 
 /// Resolve a single OBJ index string (1-based positive, or negative relative)
@@ -284,9 +320,34 @@ mod tests {
             "v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0 0\nvt 1 0\nvt 0 1\nvn 0 0 1\nf 1/1/1 2/2/1 3/3/1\n",
         );
         assert_eq!(m.triangle_count(), 1);
-        for v in m.vertices() {
-            assert_eq!(v.normal, [0.0, 0.0, 1.0]);
-        }
+        assert!(m.has_uvs());
+        let vs = m.vertices();
+        assert_eq!(vs[0].normal, [0.0, 0.0, 1.0]);
+        assert_eq!(vs[1].normal, [0.0, 0.0, 1.0]);
+        assert_eq!(vs[2].normal, [0.0, 0.0, 1.0]);
+        // UVs resolved: vt 0=(0,0), vt 1=(1,0), vt 2=(0,1).
+        assert_eq!(vs[0].uv, [0.0, 0.0]);
+        assert_eq!(vs[1].uv, [1.0, 0.0]);
+        assert_eq!(vs[2].uv, [0.0, 1.0]);
+    }
+
+    #[test]
+    fn face_with_vt_only() {
+        // `v/vt` form (no normal).
+        let m = read_obj(
+            "v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0.25 0.75\nvt 0.5 0.5\nvt 0.75 0.25\nf 1/1 2/2 3/3\n",
+        );
+        assert!(m.has_uvs());
+        let vs = m.vertices();
+        assert_eq!(vs[0].uv, [0.25, 0.75]);
+        assert_eq!(vs[1].uv, [0.5, 0.5]);
+        assert_eq!(vs[2].uv, [0.75, 0.25]);
+    }
+
+    #[test]
+    fn face_without_vt_has_no_uvs() {
+        let m = read_obj("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+        assert!(!m.has_uvs());
     }
 
     #[test]

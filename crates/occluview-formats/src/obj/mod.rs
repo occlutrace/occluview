@@ -52,6 +52,8 @@ pub fn read(bytes: &[u8]) -> Result<Mesh, FormatError> {
     // Parallel to positions; true where a vertex carries a color.
     let mut colors: Vec<[u8; 4]> = Vec::new();
     let mut has_any_color = false;
+    // Texture coordinates (vt lines).
+    let mut texcoords: Vec<[f32; 2]> = Vec::new();
     let mut builder = MeshBuilder::new().with_name("OBJ");
 
     for (line_no, line) in text.lines().enumerate() {
@@ -81,20 +83,25 @@ pub fn read(bytes: &[u8]) -> Result<Mesh, FormatError> {
                 let n = parse::normal_line(&mut tokens, line_no, line)?;
                 normals.push(n);
             }
-            // Texture coords and the directives below carry no geometry for v1.
+            "vt" => {
+                if let Some(uv) = parse::texcoord_line(&mut tokens, line_no, line) {
+                    texcoords.push(uv);
+                }
+            }
+            // The directives below carry no geometry for v1.
             // We list recognized-but-ignored directives explicitly (rather than
             // folding them into `_`) so the source documents which OBJ features
-            // we have *chosen* to skip vs. which are genuinely unknown. Both
-            // arms share an empty body, hence the local match_same_arms allow.
+            // we have *chosen* to skip vs. which are genuinely unknown.
             #[allow(clippy::match_same_arms)]
-            "vt" | "g" | "o" | "s" | "usemtl" | "mtllib" | "newmtl" | "bevel" | "cstype"
-            | "deg" | "curv" | "curv2" | "surf" | "parm" | "trim" | "hole" | "scrv" | "sp"
-            | "end" | "con" | "bmat" | "step" => {}
+            "g" | "o" | "s" | "usemtl" | "mtllib" | "newmtl" | "bevel" | "cstype" | "deg"
+            | "curv" | "curv2" | "surf" | "parm" | "trim" | "hole" | "scrv" | "sp" | "end"
+            | "con" | "bmat" | "step" => {}
             "f" => {
                 let data = parse::MeshData {
                     positions: &positions,
                     normals: &normals,
                     colors: &colors,
+                    texcoords: &texcoords,
                 };
                 parse::face_line(&mut tokens, &data, &mut builder, line_no, line)?;
             }
