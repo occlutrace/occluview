@@ -27,6 +27,70 @@ pub struct Camera {
     pub far: f32,
 }
 
+/// Named camera presets exposed by the desktop viewer.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum CameraPreset {
+    /// Dental default, looking onto the occlusal plane.
+    Occlusal,
+    /// Frontal view from +Z.
+    Front,
+    /// Right-side view from +X.
+    Right,
+    /// Left-side view from -X.
+    Left,
+}
+
+impl CameraPreset {
+    /// Stable toolbar order.
+    pub const ALL: [Self; 4] = [Self::Occlusal, Self::Front, Self::Right, Self::Left];
+
+    /// Short UI label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Occlusal => "Occlusal",
+            Self::Front => "Front",
+            Self::Right => "Right",
+            Self::Left => "Left",
+        }
+    }
+
+    /// Build a camera that frames the provided bbox from this preset.
+    #[must_use]
+    pub fn frame_bbox(self, bbox: Aabb, fovy: f32) -> Camera {
+        match self {
+            Self::Occlusal => Camera::default().frame_occlusal(bbox, fovy),
+            Self::Front => frame_planar(bbox, fovy, 0.0, 0.0),
+            Self::Right => frame_planar(bbox, fovy, core::f32::consts::FRAC_PI_2, 0.0),
+            Self::Left => frame_planar(bbox, fovy, -core::f32::consts::FRAC_PI_2, 0.0),
+        }
+    }
+}
+
+fn frame_planar(bbox: Aabb, fovy: f32, yaw: f32, pitch: f32) -> Camera {
+    let mut camera = Camera::default();
+    if bbox.is_empty() {
+        return camera;
+    }
+
+    let size = bbox.size();
+    let radius = (0.5 * size.length()).max(1.0);
+    let half_fov = 0.5 * fovy;
+
+    camera.target = bbox.center();
+    camera.yaw = yaw;
+    camera.pitch = pitch;
+    camera.fovy = fovy;
+    camera.distance = if half_fov > 1e-5 {
+        radius / half_fov.tan() / 0.7
+    } else {
+        radius * 2.0
+    };
+    camera.near = camera.distance * 0.01;
+    camera.far = camera.distance * 100.0 + radius * 4.0;
+    camera
+}
+
 impl Default for Camera {
     fn default() -> Self {
         Self {
@@ -145,5 +209,42 @@ mod tests {
         let c = Camera::default().frame_occlusal(cube_bbox(), 45.0_f32.to_radians());
         assert!(c.near < c.distance);
         assert!(c.far > c.distance + 40.0);
+    }
+
+    #[test]
+    fn camera_presets_have_toolbar_labels() {
+        let labels = CameraPreset::ALL.map(CameraPreset::label);
+        assert_eq!(labels, ["Occlusal", "Front", "Right", "Left"]);
+    }
+
+    #[test]
+    fn occlusal_preset_matches_default_framing() {
+        let bbox = cube_bbox();
+        let fovy = 45.0_f32.to_radians();
+        let preset = CameraPreset::Occlusal.frame_bbox(bbox, fovy);
+        let direct = Camera::default().frame_occlusal(bbox, fovy);
+
+        assert_eq!(preset, direct);
+    }
+
+    #[test]
+    fn front_preset_views_from_positive_z() {
+        let c = CameraPreset::Front.frame_bbox(cube_bbox(), 45.0_f32.to_radians());
+        let eye = c.eye();
+
+        assert!((eye.x - c.target.x).abs() < 1e-4, "eye={eye}");
+        assert!((eye.y - c.target.y).abs() < 1e-4, "eye={eye}");
+        assert!(eye.z > c.target.z + 10.0, "eye={eye}");
+    }
+
+    #[test]
+    fn right_and_left_presets_view_from_opposite_x_sides() {
+        let right = CameraPreset::Right.frame_bbox(cube_bbox(), 45.0_f32.to_radians());
+        let left = CameraPreset::Left.frame_bbox(cube_bbox(), 45.0_f32.to_radians());
+
+        assert!(right.eye().x > right.target.x + 10.0);
+        assert!(left.eye().x < left.target.x - 10.0);
+        assert!((right.eye().z - right.target.z).abs() < 1e-4);
+        assert!((left.eye().z - left.target.z).abs() < 1e-4);
     }
 }

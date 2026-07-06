@@ -68,7 +68,7 @@ mod app_impl {
     use super::{dispatch_by_extension, Context, PathBuf, Result};
     use eframe::egui;
     use glam::{Mat4, Vec3};
-    use occluview_core::{Camera, Mesh, ScaleBar};
+    use occluview_core::{Camera, CameraPreset, Mesh, ScaleBar};
     use occluview_render::{GpuCamera, Offscreen, ThumbnailSpec};
     use std::sync::Arc;
 
@@ -98,6 +98,7 @@ mod app_impl {
         mesh: Option<Arc<Mesh>>,
         rendered: Option<RenderedFrame>,
         needs_render: bool,
+        camera_preset: CameraPreset,
         // --- Cut View state ---
         show_cut_view: bool,
         cut_state: CutState,
@@ -182,6 +183,7 @@ mod app_impl {
                 mesh: mesh.map(Arc::new),
                 rendered: None,
                 needs_render: true,
+                camera_preset: CameraPreset::Occlusal,
                 show_cut_view: false,
                 cut_state: CutState::default(),
                 cut_texture: None,
@@ -190,13 +192,12 @@ mod app_impl {
         }
 
         fn render_now(&mut self, ctx: &egui::Context) {
-            use occluview_core::Camera;
             let Some(mesh) = self.mesh.clone() else {
                 return;
             };
             let mut mesh_mut = (*mesh).clone();
             let bbox = mesh_mut.bbox();
-            let cam = Camera::default().frame_occlusal(bbox, 45.0_f32.to_radians());
+            let cam = self.camera_preset.frame_bbox(bbox, 45.0_f32.to_radians());
             let view = build_view_matrix(&cam);
             let proj = build_proj_matrix(&cam, 1.0);
             let gpu_cam = GpuCamera::new(view, proj, Vec3::new(0.4, 0.8, 0.5), cam.eye());
@@ -321,6 +322,16 @@ mod app_impl {
                                 ""
                             }
                         ));
+                        ui.separator();
+                        for preset in CameraPreset::ALL {
+                            if ui
+                                .selectable_label(self.camera_preset == preset, preset.label())
+                                .clicked()
+                            {
+                                self.camera_preset = preset;
+                                self.needs_render = true;
+                            }
+                        }
                         ui.separator();
                         let prev = self.show_cut_view;
                         ui.checkbox(&mut self.show_cut_view, "Cut View");

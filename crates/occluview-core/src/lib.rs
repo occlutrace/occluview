@@ -48,7 +48,7 @@ pub mod scene;
 pub mod units;
 
 pub use bbox::Aabb;
-pub use camera::Camera;
+pub use camera::{Camera, CameraPreset};
 pub use error::CoreError;
 pub use mesh::{Mesh, MeshBuilder, MeshKind, MeshTexture, Vertex};
 pub use pca::{principal_axes, symmetric_eig};
