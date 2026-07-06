@@ -43,6 +43,7 @@ pub mod error;
 pub mod frame;
 pub mod mesh;
 pub mod pca;
+pub mod scale_bar;
 pub mod scene;
 pub mod units;
 
@@ -51,5 +52,6 @@ pub use camera::Camera;
 pub use error::CoreError;
 pub use mesh::{Mesh, MeshBuilder, MeshKind, MeshTexture, Vertex};
 pub use pca::{principal_axes, symmetric_eig};
+pub use scale_bar::ScaleBar;
 pub use scene::{Scene, SceneMesh};
 pub use units::Millimeters;

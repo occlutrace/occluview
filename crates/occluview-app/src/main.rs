@@ -68,7 +68,7 @@ mod app_impl {
     use super::{dispatch_by_extension, Context, PathBuf, Result};
     use eframe::egui;
     use glam::{Mat4, Vec3};
-    use occluview_core::{Camera, Mesh};
+    use occluview_core::{Camera, Mesh, ScaleBar};
     use occluview_render::{GpuCamera, Offscreen, ThumbnailSpec};
     use std::sync::Arc;
 
@@ -353,7 +353,8 @@ mod app_impl {
                         egui::UiBuilder::new()
                             .max_rect(egui::Rect::from_center_size(ui.max_rect().center(), size)),
                         |ui| {
-                            ui.image((r.texture.id(), size));
+                            let response = ui.image((r.texture.id(), size));
+                            paint_scale_bar(ui, response.rect, r.stats);
                         },
                     );
                 } else if self.mesh.is_none() {
@@ -525,6 +526,39 @@ mod app_impl {
 
     fn build_proj_matrix(cam: &Camera, aspect: f32) -> Mat4 {
         Mat4::perspective_rh(cam.fovy, aspect, cam.near, cam.far)
+    }
+
+    fn paint_scale_bar(ui: &egui::Ui, image_rect: egui::Rect, stats: MeshStats) {
+        let scene_width_mm = stats.bbox_mm[0].max(stats.bbox_mm[2]);
+        let Some(bar) = ScaleBar::for_viewport(scene_width_mm, image_rect.width()) else {
+            return;
+        };
+
+        let margin = 16.0;
+        let max_width = image_rect.width() - margin * 2.0;
+        if max_width < 64.0 || bar.width_px > max_width {
+            return;
+        }
+
+        let x0 = image_rect.left() + margin;
+        let x1 = x0 + bar.width_px;
+        let y = image_rect.bottom() - margin;
+        let tick = 6.0;
+        let painter = ui.painter();
+        let shadow = egui::Stroke::new(5.0, egui::Color32::from_black_alpha(170));
+        let line = egui::Stroke::new(3.0, egui::Color32::WHITE);
+        for stroke in [shadow, line] {
+            painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], stroke);
+            painter.line_segment([egui::pos2(x0, y - tick), egui::pos2(x0, y + tick)], stroke);
+            painter.line_segment([egui::pos2(x1, y - tick), egui::pos2(x1, y + tick)], stroke);
+        }
+        painter.text(
+            egui::pos2(x0, y - 22.0),
+            egui::Align2::LEFT_TOP,
+            bar.label(),
+            egui::FontId::proportional(13.0),
+            egui::Color32::WHITE,
+        );
     }
 }
 
