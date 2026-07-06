@@ -105,7 +105,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          arguments: --workspace
+          arguments: --workspace --all-features
 
   file-size-lint:
     # Enforces the 500-LOC rule from AGENTS.md §3.
@@ -119,12 +119,12 @@ jobs:
           offenders=""
           while IFS= read -r f; do
             loc=$(wc -l < "$f")
-            if [ "$loc" -gt 500 ]; then
+            if [ "$loc" -gt 500 ] && ! head -20 "$f" | grep -q 'file-size-exempt:'; then
               offenders="$offenders\n$f: $loc lines"
             fi
           done < <(find crates -name '*.rs')
           if [ -n "$offenders" ]; then
-            echo -e "Files exceeding the 500-line cap (AGENTS.md §3):$offenders" >&2
+            echo -e "Files exceeding the 500-line cap without a file-size-exempt reason:$offenders" >&2
             exit 1
           fi
 

@@ -1,8 +1,9 @@
 //! `occluview-app` - the desktop viewer binary.
+//! file-size-exempt: Windows GUI bootstrap stays together until live viewport state is extracted.
 //!
-//! Windows-only (ADR-0001: Windows-first). On other hosts this binary prints a
-//! clear message and exits; the live GUI requires winit + eframe which we only
-//! resolve on Windows targets (see Cargo.toml `target.cfg(windows)` deps).
+//! Windows-only (ADR-0001: Windows-first). On other hosts this binary exits
+//! with failure; the live GUI requires winit + eframe which we only resolve on
+//! Windows targets (see Cargo.toml `target.cfg(windows)` deps).
 //!
 //! ## Status (this commit)
 //!
@@ -11,28 +12,23 @@
 //! an egui image with a stats overlay. The live wgpu surface integration
 //! (orbit/zoom) lands next; this commit gets a real image on screen.
 
-#![cfg_attr(not(windows), allow(dead_code, clippy::needless_main))]
-
+#[cfg(windows)]
 use anyhow::{Context, Result};
-use occluview_core::Mesh;
+#[cfg(windows)]
 use occluview_formats::dispatch_by_extension;
+#[cfg(windows)]
 use std::path::PathBuf;
+#[cfg(windows)]
 use tracing_subscriber::EnvFilter;
 
 #[cfg(not(windows))]
-fn main() -> Result<()> {
-    eprintln!("occluview: the GUI is Windows-only (ADR-0001). On this host, use:");
-    eprintln!("  cargo run -p occluview-cli -- thumbnail <file>");
-    Ok(())
+fn main() -> std::process::ExitCode {
+    std::process::ExitCode::FAILURE
 }
 
 #[cfg(windows)]
 fn main() -> Result<()> {
     use eframe::egui;
-    use glam::{Mat4, Vec3};
-    use occluview_core::Camera;
-    use occluview_render::{GpuCamera, Offscreen, ThumbnailSpec};
-    use std::sync::Arc;
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -60,7 +56,7 @@ fn main() -> Result<()> {
     eframe::run_native(
         "OccluView",
         native_options,
-        Box::new(move |cc| Ok(Box::new(OccluViewApp::new(mesh)))),
+        Box::new(move |_cc| Ok(Box::new(OccluViewApp::new(mesh)))),
     )
     .map_err(|e| anyhow::anyhow!("eframe: {e:?}"))?;
 
@@ -69,7 +65,7 @@ fn main() -> Result<()> {
 
 #[cfg(windows)]
 mod app_impl {
-    use super::*;
+    use super::{dispatch_by_extension, Context, PathBuf, Result};
     use eframe::egui;
     use glam::{Mat4, Vec3};
     use occluview_core::{Camera, Mesh};
@@ -143,7 +139,7 @@ mod app_impl {
     }
 
     impl CutState {
-        /// Build the ClipPlane from the current preset + offset.
+        /// Build the `ClipPlane` from the current preset + offset.
         fn clip_plane(&self) -> occluview_render::ClipPlane {
             match self.preset {
                 CutPreset::Axial => occluview_render::ClipPlane::axial(self.offset_mm),
@@ -168,7 +164,7 @@ mod app_impl {
 
     struct RenderedFrame {
         texture: egui::TextureHandle,
-        size_px: [usize; 2],
+        size_px: [u16; 2],
         stats: MeshStats,
     }
 
@@ -242,7 +238,7 @@ mod app_impl {
                 ctx.load_texture("occluview-mesh", color_image, egui::TextureOptions::LINEAR);
             self.rendered = Some(RenderedFrame {
                 texture,
-                size_px: [usize::from(spec.size_px), usize::from(spec.size_px)],
+                size_px: [spec.size_px, spec.size_px],
                 stats,
             });
             self.needs_render = false;
@@ -254,21 +250,21 @@ mod app_impl {
                 return;
             };
             let cut = self.cut_state.cut_view_spec();
-            let offscreen = match pollster::block_on(occluview_render::Offscreen::new()) {
+            let offscreen = match pollster::block_on(Offscreen::new()) {
                 Ok(o) => o,
                 Err(e) => {
-                    eprintln!("cut-view offscreen init failed: {e}");
+                    tracing::error!(error = ?e, "cut-view offscreen init failed");
                     return;
                 }
             };
-            let spec = occluview_render::ThumbnailSpec {
+            let spec = ThumbnailSpec {
                 size_px: 256,
                 ..Default::default()
             };
             let pixels = match pollster::block_on(offscreen.render_cut_view(&mesh, &cut, spec)) {
                 Ok(p) => p,
                 Err(e) => {
-                    eprintln!("cut-view render failed: {e}");
+                    tracing::error!(error = ?e, "cut-view render failed");
                     return;
                 }
             };
@@ -278,30 +274,32 @@ mod app_impl {
             self.cut_texture = Some(texture);
             self.cut_needs_render = false;
         }
-    }
 
-    impl eframe::App for OccluViewApp {
-        fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        fn set_mesh(&mut self, mesh: Mesh) {
+            self.mesh = Some(Arc::new(mesh));
+            self.needs_render = true;
+            self.rendered = None;
+            self.cut_needs_render = self.show_cut_view;
+        }
+
+        fn load_path(&mut self, path: &std::path::Path, source: &'static str) {
+            match load_mesh(path) {
+                Ok(mesh) => self.set_mesh(mesh),
+                Err(e) => tracing::error!(error = ?e, source, "mesh load failed"),
+            }
+        }
+
+        fn handle_dropped_files(&mut self, ctx: &egui::Context) {
             ctx.input(|i| {
                 if let Some(file) = i.raw.dropped_files.first().cloned() {
                     if let Some(path) = file.path.clone() {
-                        match load_mesh(&path) {
-                            Ok(m) => {
-                                self.mesh = Some(Arc::new(m));
-                                self.needs_render = true;
-                                self.rendered = None;
-                            }
-                            Err(e) => tracing::error!(error = ?e, "drop load failed"),
-                        }
+                        self.load_path(&path, "drop");
                     }
                 }
             });
+        }
 
-            if self.needs_render {
-                self.render_now(ctx);
-                ctx.request_repaint();
-            }
-
+        fn show_toolbar(&mut self, ctx: &egui::Context) {
             egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     if ui.button("Open...").clicked() {
@@ -309,14 +307,7 @@ mod app_impl {
                             .add_filter("3D meshes", &["stl", "ply", "obj", "gltf", "glb"])
                             .pick_file()
                         {
-                            match load_mesh(&path) {
-                                Ok(m) => {
-                                    self.mesh = Some(Arc::new(m));
-                                    self.needs_render = true;
-                                    self.rendered = None;
-                                }
-                                Err(e) => tracing::error!(error = ?e, "open failed"),
-                            }
+                            self.load_path(&path, "open");
                         }
                     }
                     if let Some(m) = &self.mesh {
@@ -332,7 +323,7 @@ mod app_impl {
                         ));
                         ui.separator();
                         let prev = self.show_cut_view;
-                        ui.checkbox(&mut self.show_cut_view, "🔪 Cut View");
+                        ui.checkbox(&mut self.show_cut_view, "Cut View");
                         if self.show_cut_view != prev {
                             self.cut_needs_render = true;
                         }
@@ -341,23 +332,26 @@ mod app_impl {
                     }
                 });
             });
+        }
 
-            // Re-render the cut view if dirty (independent of main render).
+        fn maybe_render_cut_view(&mut self, ctx: &egui::Context) {
             if self.cut_needs_render && self.show_cut_view && self.mesh.is_some() {
                 self.render_cut_now(ctx);
                 ctx.request_repaint();
             }
+        }
 
+        fn show_central_panel(&mut self, ctx: &egui::Context) {
             egui::CentralPanel::default().show(ctx, |ui| {
                 if let Some(r) = &self.rendered {
                     let available = ui.available_size();
-                    let scale = (available.x / r.size_px[0] as f32)
-                        .min(available.y / r.size_px[1] as f32)
-                        .min(1.5);
-                    let size =
-                        egui::Vec2::new(r.size_px[0] as f32 * scale, r.size_px[1] as f32 * scale);
-                    ui.allocate_ui_at_rect(
-                        egui::Rect::from_center_size(ui.max_rect().center(), size),
+                    let width = f32::from(r.size_px[0]);
+                    let height = f32::from(r.size_px[1]);
+                    let scale = (available.x / width).min(available.y / height).min(1.5);
+                    let size = egui::Vec2::new(width * scale, height * scale);
+                    ui.allocate_new_ui(
+                        egui::UiBuilder::new()
+                            .max_rect(egui::Rect::from_center_size(ui.max_rect().center(), size)),
                         |ui| {
                             ui.image((r.texture.id(), size));
                         },
@@ -372,7 +366,9 @@ mod app_impl {
                     ui.spinner();
                 }
             });
+        }
 
+        fn show_status_panel(&self, ctx: &egui::Context) {
             if let Some(r) = &self.rendered {
                 egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
                     ui.horizontal(|ui| {
@@ -389,11 +385,12 @@ mod app_impl {
                     });
                 });
             }
+        }
 
-            // --- Cut View floating window (ADR-0011) ---
+        fn show_cut_window(&mut self, ctx: &egui::Context) {
             if self.show_cut_view {
                 let prev_state = self.cut_state.clone();
-                egui::Window::new("🔪 Cut View")
+                egui::Window::new("Cut View")
                     .open(&mut self.show_cut_view)
                     .resizable(true)
                     .default_pos([16.0, 100.0])
@@ -427,8 +424,7 @@ mod app_impl {
                                     presets
                                         .iter()
                                         .find(|(p, _)| *p == self.cut_state.preset)
-                                        .map(|(_, n)| *n)
-                                        .unwrap_or("Axial"),
+                                        .map_or("Axial", |(_, n)| *n),
                                 )
                                 .show_ui(ui, |ui| {
                                     for (p, name) in presets {
@@ -462,7 +458,7 @@ mod app_impl {
                                             &mut self.cut_state.yaw_deg,
                                             -90.0..=90.0,
                                         )
-                                        .suffix("°"),
+                                        .suffix(" deg"),
                                     )
                                     .changed()
                                 {
@@ -477,7 +473,7 @@ mod app_impl {
                                             &mut self.cut_state.pitch_deg,
                                             -90.0..=90.0,
                                         )
-                                        .suffix("°"),
+                                        .suffix(" deg"),
                                     )
                                     .changed()
                                 {
@@ -493,16 +489,33 @@ mod app_impl {
                             self.cut_needs_render = true;
                         }
                     });
-                // If any control changed, mark for re-render.
-                if self.cut_state.offset_mm != prev_state.offset_mm
-                    || self.cut_state.preset != prev_state.preset
-                    || self.cut_state.yaw_deg != prev_state.yaw_deg
-                    || self.cut_state.pitch_deg != prev_state.pitch_deg
-                    || self.cut_state.show_hollow != prev_state.show_hollow
-                {
+                if self.cut_state_changed(&prev_state) {
                     self.cut_needs_render = true;
                 }
             }
+        }
+
+        fn cut_state_changed(&self, prev: &CutState) -> bool {
+            self.cut_state.offset_mm.to_bits() != prev.offset_mm.to_bits()
+                || self.cut_state.preset != prev.preset
+                || self.cut_state.yaw_deg.to_bits() != prev.yaw_deg.to_bits()
+                || self.cut_state.pitch_deg.to_bits() != prev.pitch_deg.to_bits()
+                || self.cut_state.show_hollow != prev.show_hollow
+        }
+    }
+
+    impl eframe::App for OccluViewApp {
+        fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+            self.handle_dropped_files(ctx);
+            if self.needs_render {
+                self.render_now(ctx);
+                ctx.request_repaint();
+            }
+            self.show_toolbar(ctx);
+            self.maybe_render_cut_view(ctx);
+            self.show_central_panel(ctx);
+            self.show_status_panel(ctx);
+            self.show_cut_window(ctx);
         }
     }
 

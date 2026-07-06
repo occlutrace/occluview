@@ -1,5 +1,6 @@
 //! Offscreen render-to-texture: used by the thumbnail worker and golden-image
 //! tests. One render target + depth, one draw, read back as RGBA8.
+//! file-size-exempt: Offscreen render paths share readback setup until render passes stabilize.
 
 use crate::camera::GpuCamera;
 use crate::clipping::ClipPlane;

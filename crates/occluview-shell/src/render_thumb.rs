@@ -194,11 +194,13 @@ mod tests {
     #[test]
     fn obj_stream_without_extension_reaches_obj_parser() {
         let res = render_thumbnail_bytes(None, b"v not-a-number\n", ThumbnailSpec::default());
-        let Err(ShellError::Format(occluview_formats::FormatError::Malformed { format, .. })) = res
-        else {
-            panic!("expected OBJ parser error, got {res:?}");
-        };
-        assert_eq!(format, "OBJ");
+        assert!(matches!(
+            res,
+            Err(ShellError::Format(occluview_formats::FormatError::Malformed {
+                format,
+                ..
+            })) if format == "OBJ"
+        ));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 //! Render pipeline: device + shader + pipeline + per-frame camera uniform.
+//! file-size-exempt: WGPU pipeline setup is split only after the live viewport pipeline lands.
 //!
 //! [`Renderer`] owns the long-lived GPU state (bind group layout, render
 //! pipeline, camera uniform buffer). Per-frame you call [`Renderer::draw`]

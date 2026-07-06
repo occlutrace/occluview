@@ -283,7 +283,7 @@ mod tests {
     #[test]
     fn orthonormal_basis_is_perpendicular() {
         let n = [0.0, 0.0, 1.0];
-        let (u, v) = super::clipping_inner::orthonormal_basis(&n);
+        let (u, v) = clipping_inner::orthonormal_basis(&n);
         // u and v must be perpendicular to n (dot ~ 0).
         assert!(dot3(&u, &n).abs() < 1e-5);
         assert!(dot3(&v, &n).abs() < 1e-5);
@@ -298,7 +298,7 @@ mod tests {
     fn orthonormal_basis_handles_vertical_normal() {
         // normal = +Y (the degenerate helper case) must still produce a valid basis.
         let n = [0.0, 1.0, 0.0];
-        let (u, v) = super::clipping_inner::orthonormal_basis(&n);
+        let (u, v) = clipping_inner::orthonormal_basis(&n);
         assert!(dot3(&u, &n).abs() < 1e-5);
         assert!(dot3(&v, &n).abs() < 1e-5);
     }

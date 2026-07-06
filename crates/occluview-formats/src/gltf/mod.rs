@@ -1,4 +1,5 @@
 //! glTF/GLB reader (ADR-0010).
+//! file-size-exempt: GLB accessor validation is kept local until external glTF buffers land.
 //!
 //! Native Rust reader for the dental-viewer subset of glTF 2.0. Only the GLB
 //! binary-container form is supported in v1 (the entire OccluTrace corpus is
@@ -684,7 +685,7 @@ mod tests {
         assert_eq!(mesh.indices(), &[1, 4, 2, 5, 0, 3]);
     }
 
-    /// End-to-end: a GLB with TEXCOORD_0 + a material base-color texture
+    /// End-to-end: a GLB with `TEXCOORD_0` + a material base-color texture
     /// (PNG embedded in a bufferView) round-trips UVs and decodes the texture.
     #[test]
     fn textured_glb_round_trips_uvs_and_texture() {

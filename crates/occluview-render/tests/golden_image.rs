@@ -8,6 +8,8 @@
 //! an intentional shader change, delete the baseline and re-run; commit the
 //! new PNG with an ADR-style justification in the PR (AGENTS.md §0.6).
 
+#![allow(clippy::expect_used)]
+
 use glam::{Mat4, Vec3};
 use occluview_core::{Mesh, MeshBuilder, MeshTexture, Vertex};
 use occluview_render::{
@@ -53,26 +55,11 @@ fn golden_triangle_matches_baseline() {
     let pixels = render_to_pixels();
     let baseline_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/baselines");
     let baseline_path = format!("{baseline_dir}/triangle.png");
-    let baseline = match std::fs::read(&baseline_path) {
-        Ok(bytes) => image::load_from_memory(&bytes)
-            .expect("baseline PNG decodes")
-            .to_rgba8()
-            .to_vec(),
-        Err(_) => {
-            // No baseline yet: generate it. The test "passes" by recording the
-            // current output; CI fails if the file is not committed afterwards.
-            let _ = std::fs::create_dir_all(baseline_dir);
-            let img = image::RgbaImage::from_raw(u32::from(SIZE), u32::from(SIZE), pixels.clone())
-                .expect("image dimensions");
-            let _ = img.save(&baseline_path);
-            eprintln!(
-                "golden: baseline not found; wrote {}. \
-                 Commit it (after visual review) or update the test.",
-                baseline_path
-            );
-            return;
-        }
-    };
+    let baseline_bytes = std::fs::read(&baseline_path).expect("golden baseline is committed");
+    let baseline = image::load_from_memory(&baseline_bytes)
+        .expect("baseline PNG decodes")
+        .to_rgba8()
+        .to_vec();
 
     assert_eq!(
         pixels.len(),
@@ -93,11 +80,12 @@ fn golden_triangle_matches_baseline() {
     // Allow a small fraction of pixels to exceed tolerance (antialiasing edges,
     // rasterization differences between GPU vendors).
     let total_pixels = usize::from(SIZE) * usize::from(SIZE);
-    let frac = diffs_above as f32 / total_pixels as f32;
+    let diff_basis_points = diffs_above * 10_000 / total_pixels;
     assert!(
-        frac < 0.05,
-        "golden mismatch: {diffs_above}/{total_pixels} pixels ({:.2}%) exceed tolerance {TOLERANCE}, max_diff={max_diff}",
-        frac * 100.0
+        diffs_above * 20 < total_pixels,
+        "golden mismatch: {diffs_above}/{total_pixels} pixels ({}.{:02}%) exceed tolerance {TOLERANCE}, max_diff={max_diff}",
+        diff_basis_points / 100,
+        diff_basis_points % 100
     );
 }
 
@@ -227,7 +215,7 @@ fn textured_triangle_renders_checkerboard() {
 /// triangle centered at the origin is clipped by a plane at `distance = 0`
 /// with normal `+Z` pointing toward the camera — the back half is discarded,
 /// leaving fewer visible pixels than the unclipped triangle. Verifies the
-/// WGSL `discard` branch and the ClipPlane uniform binding work end-to-end.
+/// WGSL `discard` branch and the `ClipPlane` uniform binding work end-to-end.
 #[test]
 fn cut_triangle_discard_removes_pixels() {
     let mesh = triangle_mesh();

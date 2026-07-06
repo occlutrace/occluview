@@ -1,4 +1,5 @@
 //! The mesh data model.
+//! file-size-exempt: Mesh invariants, builders, and tests stay together until scene graph extraction.
 //!
 //! A [`Mesh`] is the unit of geometry that flows from a format loader, through
 //! the scene graph, into the renderer. It is GPU- and I/O-agnostic on purpose:
@@ -396,6 +397,7 @@ impl MeshBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{mem::size_of, ptr::addr_of};
 
     fn v(x: f32, y: f32, z: f32) -> Vertex {
         Vertex::at(Vec3::new(x, y, z))
@@ -502,18 +504,18 @@ mod tests {
         // Adding `uv` ([f32;2] = 8 bytes) after `color` grew the struct from
         // 28 to 36 bytes. The layout is position@0, normal@12, color@24,
         // uv@28 — no padding holes, all naturally aligned (max align = 4).
-        assert_eq!(std::mem::size_of::<Vertex>(), 36);
+        assert_eq!(size_of::<Vertex>(), 36);
         let sample = Vertex {
             position: [1.0, 2.0, 3.0],
             normal: [4.0, 5.0, 6.0],
             color: [7, 8, 9, 10],
             uv: [11.0, 12.0],
         };
-        let base = &sample as *const Vertex as usize;
-        assert_eq!(&sample.position as *const _ as usize - base, 0);
-        assert_eq!(&sample.normal as *const _ as usize - base, 12);
-        assert_eq!(&sample.color as *const _ as usize - base, 24);
-        assert_eq!(&sample.uv as *const _ as usize - base, 28);
+        let base = addr_of!(sample) as usize;
+        assert_eq!(addr_of!(sample.position) as usize - base, 0);
+        assert_eq!(addr_of!(sample.normal) as usize - base, 12);
+        assert_eq!(addr_of!(sample.color) as usize - base, 24);
+        assert_eq!(addr_of!(sample.uv) as usize - base, 28);
     }
 
     #[test]

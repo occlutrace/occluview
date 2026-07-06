@@ -48,10 +48,10 @@ publish = false              # we are not on crates.io yet
 # `dep = { workspace = true }` in each crate's [dependencies].
 [workspace.dependencies]
 # Internal crates.
-occluview-core    = { path = "crates/occluview-core" }
-occluview-formats = { path = "crates/occluview-formats" }
-occluview-render  = { path = "crates/occluview-render" }
-occluview-shell   = { path = "crates/occluview-shell" }
+occluview-core    = { path = "crates/occluview-core", version = "0.0.1" }
+occluview-formats = { path = "crates/occluview-formats", version = "0.0.1" }
+occluview-render  = { path = "crates/occluview-render", version = "0.0.1" }
+occluview-shell   = { path = "crates/occluview-shell", version = "0.0.1" }
 
 # Math / numerics.
 glam    = "0.29"            # permissive (MIT OR Apache-2.0)

@@ -13,7 +13,7 @@
 //! - The declared triangle count is occasionally wrong; detect by EOF, not by
 //!   count alone.
 //! - ASCII files are sometimes mislabeled as binary (no reliable magic); the
-//!   [`probe`] module hints, and [`read`] re-checks.
+//!   probe path hints, and [`read`] re-checks.
 
 pub mod ascii;
 pub mod binary;
@@ -23,7 +23,7 @@ use occluview_core::Mesh;
 
 /// Read an STL from raw bytes.
 ///
-/// Dispatches to ASCII or binary by inspecting the content (the [`probe`] module
+/// Dispatches to ASCII or binary by inspecting the content (the probe path
 /// gives a *hint*; we confirm here, because STL has no reliable magic byte).
 ///
 /// # Errors

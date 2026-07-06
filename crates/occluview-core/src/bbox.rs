@@ -17,7 +17,7 @@ pub struct Aabb {
 }
 
 impl Aabb {
-    /// An empty bounding box — the identity for [`Aabb::enclose`].
+    /// An empty bounding box - the identity for [`Aabb::enclose_point`].
     pub const EMPTY: Self = Self {
         min: Vec3::splat(f32::INFINITY),
         max: Vec3::splat(f32::NEG_INFINITY),

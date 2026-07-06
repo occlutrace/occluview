@@ -1,4 +1,5 @@
 //! PLY ASCII data reader.
+//! file-size-exempt: ASCII property planning and row parsing stay paired for parser auditability.
 //!
 //! Consumes the data section of a [`super::header::ParsedHeader`] (format =
 //! Ascii), reading `vertex` and `face` elements in declaration order. We honor

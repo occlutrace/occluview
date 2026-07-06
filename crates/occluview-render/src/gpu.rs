@@ -93,7 +93,7 @@ impl GpuMesh {
     /// Minimum binding size for a uniform buffer holding a [`crate::GpuCamera`].
     /// Used by the pipeline builder; exported here for tests.
     ///
-    /// [`GpuCamera`] is a fixed 160-byte POD, so this never returns `None`.
+    /// [`crate::GpuCamera`] is a fixed 160-byte POD, so this never returns `None`.
     #[must_use]
     pub fn camera_uniform_size() -> u64 {
         size_of::<crate::GpuCamera>() as u64

@@ -95,52 +95,58 @@ mod tests {
 
     #[test]
     fn glb_magic_wins_without_extension() {
-        assert_eq!(
-            infer_thumbnail_format(None, b"glTF\x02\x00\x00\x00").unwrap(),
-            FormatKind::Gltf
-        );
+        assert!(matches!(
+            infer_thumbnail_format(None, b"glTF\x02\x00\x00\x00"),
+            Ok(FormatKind::Gltf)
+        ));
     }
 
     #[test]
     fn binary_stl_magic_wins_over_wrong_extension() {
-        assert_eq!(
-            infer_thumbnail_format(Some("obj"), &one_triangle_binary_stl()).unwrap(),
-            FormatKind::Stl
-        );
+        assert!(matches!(
+            infer_thumbnail_format(Some("obj"), &one_triangle_binary_stl()),
+            Ok(FormatKind::Stl)
+        ));
     }
 
     #[test]
     fn obj_text_is_detected_without_extension() {
         let obj = b"# scan export\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
-        assert_eq!(infer_thumbnail_format(None, obj).unwrap(), FormatKind::Obj);
+        assert!(matches!(
+            infer_thumbnail_format(None, obj),
+            Ok(FormatKind::Obj)
+        ));
     }
 
     #[test]
     fn extension_selects_obj_when_magic_is_silent() {
-        assert_eq!(
-            infer_thumbnail_format(Some(".OBJ"), b"not enough obj syntax").unwrap(),
-            FormatKind::Obj
-        );
+        assert!(matches!(
+            infer_thumbnail_format(Some(".OBJ"), b"not enough obj syntax"),
+            Ok(FormatKind::Obj)
+        ));
     }
 
     #[test]
     fn gltf_json_is_deferred_for_thumbnails() {
-        let err = infer_thumbnail_format(Some("gltf"), br#"{"asset":{"version":"2.0"}}"#)
-            .expect_err("JSON glTF is not a v1 thumbnail format");
-        assert!(err.to_string().contains("gltf"));
+        assert!(matches!(
+            infer_thumbnail_format(Some("gltf"), br#"{"asset":{"version":"2.0"}}"#),
+            Err(FormatError::Unsupported { extension }) if extension == "gltf"
+        ));
     }
 
     #[test]
     fn threemf_is_deferred_for_thumbnails() {
-        let err = infer_thumbnail_format(Some("3mf"), &[0x50, 0x4B, 0x03, 0x04])
-            .expect_err("3MF is not a v1 thumbnail format");
-        assert!(err.to_string().contains("3mf"));
+        assert!(matches!(
+            infer_thumbnail_format(Some("3mf"), &[0x50, 0x4B, 0x03, 0x04]),
+            Err(FormatError::Unsupported { extension }) if extension == "3mf"
+        ));
     }
 
     #[test]
     fn unknown_input_is_rejected() {
-        let err = infer_thumbnail_format(None, b"not a mesh")
-            .expect_err("unknown bytes without extension should be rejected");
-        assert!(err.to_string().contains("unsupported"));
+        assert!(matches!(
+            infer_thumbnail_format(None, b"not a mesh"),
+            Err(FormatError::Unsupported { .. })
+        ));
     }
 }

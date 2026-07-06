@@ -50,7 +50,7 @@ mod tests {
     #[test]
     fn returns_none_when_worker_panics() {
         let result = run_with_timeout(Duration::from_millis(100), || -> u8 {
-            panic!("worker failed");
+            std::panic::resume_unwind(Box::new("worker failed"));
         });
         assert_eq!(result, None);
     }
