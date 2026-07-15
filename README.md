@@ -20,7 +20,7 @@ up when needed, and keep the file manager useful while browsing case folders.
 OccluView is the open-source desktop viewer of the
 [OccluTrace](https://occlutrace.ai) platform for dental labs.
 
-The current stable release is [v1.0.1](https://github.com/occlutrace/OccluView/releases/tag/v1.0.1).
+The current stable release is [v1.0.2](https://github.com/occlutrace/OccluView/releases/tag/v1.0.2).
 
 ## Features
 
@@ -31,7 +31,7 @@ The current stable release is [v1.0.1](https://github.com/occlutrace/OccluView/r
 - **Mesh editor** — exocad-style cleanup tuned for dental scans and
   prostheses, reachable by right-clicking any mesh or layer: rectangle,
   outline lasso, and whole-object selection (surface or through-mesh),
-  delete/crop/cut/separate, close holes with interpolated caps, keep-largest,
+  delete/crop/cut/separate, close selected holes with interpolated caps, keep-largest,
   flip normals, mesh repair, shape-preserving Taubin smoothing, undo/redo.
   Edited layers export to PLY, STL, or OBJ.
 - **Cut View** — interactive cross-section: drag the cut plane in the
@@ -61,7 +61,7 @@ STL decoding and normal generation are parallel; numbers scale with cores.
 
 ## Distribution
 
-The current stable release is [OccluView v1.0.1](https://github.com/occlutrace/OccluView/releases/tag/v1.0.1).
+The current stable release is [OccluView v1.0.2](https://github.com/occlutrace/OccluView/releases/tag/v1.0.2).
 Windows and Linux packages, checksums, signatures, and release notes are
 published on the GitHub release page.
 
@@ -152,7 +152,7 @@ input paths, filenames, parser details, and key material.
 
 ## Status
 
-The public release baseline is `1.0.1`. The viewer, mesh loaders and editor,
+The public release baseline is `1.0.2`. The viewer, mesh loaders and editor,
 renderer, Windows shell extension, MSI, Debian packaging, and signed update
 channel are maintained as one release-tested product. The platform-neutral
 thumbnail pipeline is shared by the Linux thumbnailer, the Windows shell

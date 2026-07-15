@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.2 - 2026-07-15
+
+- Made Bridge Split rebuild source normals on a private working copy, so
+  corrupt or stale normal payloads no longer block clipping or poison the
+  generated parts; positions, indices, and UVs remain strict geometry inputs.
+- Made interactive Close Holes selection-only: an empty selection is a no-op,
+  and only selected visible faces can qualify a boundary loop. Whole-mesh
+  filling remains an explicit internal/CLI and repair-pipeline operation.
+- Added regression coverage for selected-rim closure, hidden-layer isolation,
+  empty-selection no-ops, and corrupt-normal Bridge Split inputs.
+
 ## 1.0.1 - 2026-07-15
 
 - Fixed HPS/DCM files with large compressed texture atlases being rejected as
