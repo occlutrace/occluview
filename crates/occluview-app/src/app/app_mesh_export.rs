@@ -3,7 +3,7 @@ use super::{
 };
 use anyhow::{bail, Context, Result};
 use occluview_formats::write::{
-    write_mesh_overwrite, MeshWriteFormat, MeshWriteOptions, MeshWriteReport,
+    write_mesh_overwrite, MeshWriteFormat, MeshWriteOptions, MeshWriteReport, MeshWriteWarning,
 };
 use std::path::Path;
 
@@ -26,15 +26,18 @@ impl OccluViewApp {
         paths: &[PathBuf],
         request: LayerContextRequest,
     ) -> bool {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("PLY mesh", &["ply"])
-            .add_filter("STL mesh", &["stl"])
-            .add_filter("OBJ mesh", &["obj"])
-            .set_file_name(default_layer_export_name(paths, scene, request.index))
-            .save_file()
-        else {
+        let default_format = default_layer_export_format(paths, request.index);
+        let mut dialog = layer_export_file_dialog(default_format).set_file_name(
+            default_layer_export_name(paths, scene, request.index, default_format),
+        );
+        if let Some(directory) = default_layer_export_directory(paths, request.index) {
+            dialog = dialog.set_directory(directory);
+        }
+
+        let Some(selected_path) = dialog.save_file() else {
             return false;
         };
+        let path = normalize_layer_export_path(selected_path, default_format);
 
         match write_layer_export_to_path(scene, request, &path) {
             Ok(report) => {
@@ -44,9 +47,13 @@ impl OccluViewApp {
                 if self.unsaved_edit_layer_ids.is_empty() {
                     self.has_unsaved_mesh_edits = false;
                 }
+                let warning_suffix = mesh_export_warning_summary(&report.warnings)
+                    .map(|summary| format!(" (warnings: {summary})"))
+                    .unwrap_or_default();
                 self.status_message = Some(format!(
-                    "Exported layer as {}: {}",
+                    "Exported layer as {}{}: {}",
                     mesh_export_format_label(report.format),
+                    warning_suffix,
                     path.display()
                 ));
                 true
@@ -148,9 +155,98 @@ fn mesh_export_format_label(format: MeshWriteFormat) -> &'static str {
     }
 }
 
-fn default_layer_export_name(paths: &[PathBuf], scene: &Scene, index: usize) -> String {
-    let stem = paths
+fn layer_export_file_dialog(default_format: MeshWriteFormat) -> rfd::FileDialog {
+    let formats = match default_format {
+        MeshWriteFormat::StlBinary => [
+            MeshWriteFormat::StlBinary,
+            MeshWriteFormat::PlyBinaryLittleEndian,
+            MeshWriteFormat::Obj,
+        ],
+        MeshWriteFormat::PlyBinaryLittleEndian => [
+            MeshWriteFormat::PlyBinaryLittleEndian,
+            MeshWriteFormat::StlBinary,
+            MeshWriteFormat::Obj,
+        ],
+        MeshWriteFormat::Obj => [
+            MeshWriteFormat::Obj,
+            MeshWriteFormat::PlyBinaryLittleEndian,
+            MeshWriteFormat::StlBinary,
+        ],
+    };
+
+    formats
+        .into_iter()
+        .fold(rfd::FileDialog::new(), |dialog, format| match format {
+            MeshWriteFormat::StlBinary => dialog.add_filter("STL mesh", &["stl"]),
+            MeshWriteFormat::PlyBinaryLittleEndian => dialog.add_filter("PLY mesh", &["ply"]),
+            MeshWriteFormat::Obj => dialog.add_filter("OBJ mesh", &["obj"]),
+        })
+}
+
+fn exact_layer_source_path(paths: &[PathBuf], index: usize) -> Option<&Path> {
+    paths
         .get(index)
+        .map(PathBuf::as_path)
+        .filter(|path| !path.as_os_str().is_empty())
+}
+
+fn source_path_for_export_defaults(paths: &[PathBuf], index: usize) -> Option<&Path> {
+    exact_layer_source_path(paths, index).or_else(|| {
+        paths
+            .iter()
+            .map(PathBuf::as_path)
+            .find(|path| !path.as_os_str().is_empty())
+    })
+}
+
+fn mesh_export_format_from_source_path(path: &Path) -> Option<MeshWriteFormat> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    match extension.as_str() {
+        "ply" => Some(MeshWriteFormat::PlyBinaryLittleEndian),
+        "stl" => Some(MeshWriteFormat::StlBinary),
+        "obj" => Some(MeshWriteFormat::Obj),
+        // HPS/DCM and GLB are currently readable but do not have a matching
+        // writer in the public export contract. Keep the fallback explicit.
+        _ => None,
+    }
+}
+
+fn default_layer_export_format(paths: &[PathBuf], index: usize) -> MeshWriteFormat {
+    source_path_for_export_defaults(paths, index)
+        .and_then(mesh_export_format_from_source_path)
+        .unwrap_or(MeshWriteFormat::PlyBinaryLittleEndian)
+}
+
+fn default_layer_export_directory(paths: &[PathBuf], index: usize) -> Option<PathBuf> {
+    source_path_for_export_defaults(paths, index)
+        .and_then(Path::parent)
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+}
+
+fn mesh_write_extension(format: MeshWriteFormat) -> &'static str {
+    match format {
+        MeshWriteFormat::StlBinary => "stl",
+        MeshWriteFormat::PlyBinaryLittleEndian => "ply",
+        MeshWriteFormat::Obj => "obj",
+    }
+}
+
+fn normalize_layer_export_path(path: PathBuf, fallback_format: MeshWriteFormat) -> PathBuf {
+    if path.extension().is_none() {
+        path.with_extension(mesh_write_extension(fallback_format))
+    } else {
+        path
+    }
+}
+
+fn default_layer_export_name(
+    paths: &[PathBuf],
+    scene: &Scene,
+    index: usize,
+    format: MeshWriteFormat,
+) -> String {
+    let stem = exact_layer_source_path(paths, index)
         .and_then(|path| path.file_stem())
         .and_then(|stem| stem.to_str())
         .or_else(|| {
@@ -163,7 +259,20 @@ fn default_layer_export_name(paths: &[PathBuf], scene: &Scene, index: usize) -> 
         .filter(|stem| !stem.is_empty())
         .unwrap_or_else(|| format!("layer-{}", index + 1));
 
-    format!("{stem}-edited.ply")
+    format!("{stem}-edited.{}", mesh_write_extension(format))
+}
+
+fn mesh_export_warning_summary(warnings: &[MeshWriteWarning]) -> Option<String> {
+    let labels: Vec<&str> = warnings
+        .iter()
+        .map(|warning| match warning {
+            MeshWriteWarning::PointCloudRejectedForStl => "point cloud omitted from STL",
+            MeshWriteWarning::VertexColorsNotWritten => "vertex colors not included",
+            MeshWriteWarning::UvsNotWritten => "UVs not included",
+            MeshWriteWarning::TextureImageNotWritten => "texture image not included",
+        })
+        .collect();
+    (!labels.is_empty()).then(|| labels.join(", "))
 }
 
 fn sanitize_filename_stem(raw: &str) -> String {
@@ -234,14 +343,71 @@ mod tests {
     }
 
     #[test]
-    fn default_layer_export_name_prefers_plain_scan_name_with_ply_extension() -> Result<()> {
+    fn default_layer_export_name_uses_source_format() -> Result<()> {
         let scene = exportable_scene()?;
-        let paths = vec![PathBuf::from("very-long-scan-name.hps")];
+        let paths = vec![PathBuf::from("very-long-scan-name.stl")];
 
-        let name = default_layer_export_name(&paths, &scene, 0);
+        let name =
+            default_layer_export_name(&paths, &scene, 0, default_layer_export_format(&paths, 0));
 
-        assert_eq!(name, "very-long-scan-name-edited.ply");
+        assert_eq!(name, "very-long-scan-name-edited.stl");
         Ok(())
+    }
+
+    #[test]
+    fn source_format_falls_back_to_ply_for_read_only_formats() -> Result<()> {
+        let scene = exportable_scene()?;
+        let paths = vec![PathBuf::from("encrypted-scan.hps")];
+
+        assert_eq!(
+            default_layer_export_format(&paths, 0),
+            MeshWriteFormat::PlyBinaryLittleEndian
+        );
+        assert_eq!(
+            default_layer_export_name(&paths, &scene, 0, default_layer_export_format(&paths, 0),),
+            "encrypted-scan-edited.ply"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn derived_layer_uses_first_source_for_folder_and_format() {
+        let paths = vec![PathBuf::new(), PathBuf::from("/case/scans/upper.obj")];
+
+        assert_eq!(default_layer_export_format(&paths, 0), MeshWriteFormat::Obj);
+        assert_eq!(
+            default_layer_export_directory(&paths, 0),
+            Some(PathBuf::from("/case/scans"))
+        );
+    }
+
+    #[test]
+    fn export_directory_prefers_the_exact_layer_source() {
+        let paths = vec![
+            PathBuf::from("/case/upper/upper.stl"),
+            PathBuf::from("/case/lower/lower.ply"),
+        ];
+
+        assert_eq!(
+            default_layer_export_directory(&paths, 1),
+            Some(PathBuf::from("/case/lower"))
+        );
+        assert_eq!(
+            default_layer_export_format(&paths, 1),
+            MeshWriteFormat::PlyBinaryLittleEndian
+        );
+    }
+
+    #[test]
+    fn export_without_an_extension_uses_the_source_format() {
+        assert_eq!(
+            normalize_layer_export_path(PathBuf::from("edited"), MeshWriteFormat::StlBinary),
+            PathBuf::from("edited.stl")
+        );
+        assert_eq!(
+            normalize_layer_export_path(PathBuf::from("edited.obj"), MeshWriteFormat::StlBinary),
+            PathBuf::from("edited.obj")
+        );
     }
 
     #[test]
