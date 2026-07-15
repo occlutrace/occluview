@@ -2338,7 +2338,7 @@ dependencies = [
 
 [[package]]
 name = "occlu-mesh-edit"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "glam",
  "thiserror 1.0.69",
@@ -2346,7 +2346,7 @@ dependencies = [
 
 [[package]]
 name = "occluview-app"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -2370,7 +2370,7 @@ dependencies = [
 
 [[package]]
 name = "occluview-cli"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "glam",
@@ -2389,7 +2389,7 @@ dependencies = [
 
 [[package]]
 name = "occluview-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bytemuck",
  "glam",
@@ -2402,7 +2402,7 @@ dependencies = [
 
 [[package]]
 name = "occluview-formats"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "glam",
  "image",
@@ -2421,7 +2421,7 @@ dependencies = [
 
 [[package]]
 name = "occluview-hps"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "adler2",
  "blowfish",
@@ -2434,7 +2434,7 @@ dependencies = [
 
 [[package]]
 name = "occluview-render"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bytemuck",
  "glam",
@@ -2449,7 +2449,7 @@ dependencies = [
 
 [[package]]
 name = "occluview-robust-csg"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "glam",
  "manifold-csg",
@@ -2458,7 +2458,7 @@ dependencies = [
 
 [[package]]
 name = "occluview-shell"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "glam",
  "occluview-core",
@@ -2476,7 +2476,7 @@ dependencies = [
 
 [[package]]
 name = "occluview-thumbnail"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "glam",
  "occluview-core",
@@ -2492,7 +2492,7 @@ dependencies = [
 
 [[package]]
 name = "occluview-update"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "minisign",
  "minisign-verify",

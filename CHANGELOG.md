@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.1 - 2026-07-15
+
+- Fixed HPS/DCM files with large compressed texture atlases being rejected as
+  oversized raw RGBA payloads before JPEG decoding.
+- Kept compressed texture color decoding deterministic instead of guessing
+  channel order from the image contents.
+- Made Bridge Split continue with a bounded surface fallback for open dental
+  scans and importer topology residue, while preserving closed-solid behavior
+  for valid CAD meshes.
+- Added a non-fatal result path for topology preflight failures so the source
+  mesh remains unchanged when no usable split can be produced.
+
 ## 1.0.0 - 2026-07-15
 
 - Declared the first stable release after the viewer, editor, HPS path,
