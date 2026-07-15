@@ -64,10 +64,6 @@ impl DecodedTexture {
         &self.rgba
     }
 
-    pub(crate) fn rgba_mut(&mut self) -> &mut [u8] {
-        &mut self.rgba
-    }
-
     /// Consume the texture into dimensions and owned RGBA8 pixels.
     #[must_use]
     pub fn into_parts(self) -> (u32, u32, Vec<u8>) {

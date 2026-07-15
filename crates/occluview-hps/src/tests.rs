@@ -62,6 +62,16 @@ fn red_png_bytes() -> Vec<u8> {
     buf.into_inner()
 }
 
+fn small_jpeg_bytes() -> Vec<u8> {
+    let image =
+        image::RgbImage::from_raw(2, 1, vec![220, 30, 20, 20, 30, 220]).expect("image dimensions");
+    let mut buffer = Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(image)
+        .write_to(&mut buffer, image::ImageFormat::Jpeg)
+        .expect("encode jpeg");
+    buffer.into_inner()
+}
+
 fn sequential_vertex_bytes(vertex_count: usize) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(vertex_count * 12);
     for idx in 0..vertex_count {
@@ -510,6 +520,30 @@ fn raw_rgb_texture_image_keeps_declared_rgb_order() {
         texture.rgba(),
         vec![200, 34, 12, 255, 70, 80, 90, 255, 1, 2, 3, 255, 10, 20, 30, 255]
     );
+}
+
+#[test]
+fn compressed_texture_uses_decoded_dimensions_before_raw_metadata_limits() {
+    let jpeg = small_jpeg_bytes();
+    let extra = format!(
+        r#"  <TextureData2>
+    <TextureImages>
+      <TextureImage TextureId="tex0" Width="8192" Height="4096" BytesPerPixel="3" Base64EncodedBytes="{}">{}</TextureImage>
+    </TextureImages>
+  </TextureData2>
+"#,
+        jpeg.len(),
+        encode_base64(&jpeg)
+    );
+
+    let mesh = read(&cc_fixture(3, 1, &[4], &extra))
+        .expect("a compressed texture must not be rejected as raw RGBA");
+    let texture = mesh
+        .texture()
+        .expect("compressed HPS texture should be attached");
+
+    assert_eq!((texture.width(), texture.height()), (2, 1));
+    assert_eq!(texture.rgba().len(), 2 * 4);
 }
 
 // A format-less raw HPS texture MUST decode deterministically as BGRA — HPS

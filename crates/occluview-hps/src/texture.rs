@@ -9,7 +9,7 @@ use std::mem::size_of;
 use zeroize::Zeroizing;
 
 const MAX_TEXTURE_DIMENSION_PX: u32 = 8_192;
-const MAX_TEXTURE_RGBA_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_TEXTURE_RGBA_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Debug, Default)]
 pub(super) struct SurfaceTexture {
@@ -83,7 +83,7 @@ fn parse_texture_image(text: &str) -> Result<Option<DecodedTexture>, HpsError> {
     } else {
         decode_embedded_raster(&bytes)?
     };
-    Ok(Some(correct_channel_order_for_dental(texture)))
+    Ok(Some(texture))
 }
 
 fn decode_embedded_raster(bytes: &[u8]) -> Result<DecodedTexture, HpsError> {
@@ -134,63 +134,6 @@ fn texture_malformed(reason: impl Into<String>) -> HpsError {
     }
 }
 
-/// Final domain-prior guard against a swapped R/B channel order.
-///
-/// A dental scan is physically warm: enamel is cream/white and gingiva is red or
-/// pink, so the mean RED channel always meets or exceeds the mean BLUE. A decoded
-/// texture whose blue clearly dominates red is impossible for a real scan — it is
-/// the fingerprint of a swapped R<->B order. HPS texture channel metadata
-/// is inconsistent across exporter versions and is often absent, so the declared
-/// or defaulted layout above can be wrong for a given file (the symptom: red
-/// gingiva renders bright blue). When that fingerprint is present, swap R<->B so
-/// the scan reads warm. A texture that is already warm or neutral is left exactly
-/// as-is, so this can never cool a correct texture.
-fn correct_channel_order_for_dental(mut texture: DecodedTexture) -> DecodedTexture {
-    if texture_is_implausibly_blue(texture.rgba()) {
-        for pixel in texture.rgba_mut().chunks_exact_mut(4) {
-            pixel.swap(0, 2);
-        }
-    }
-    texture
-}
-
-/// Whether the texture's opaque, saturated pixels are blue-dominant by a clear
-/// margin — a physical impossibility for a dental scan and hence a reliable
-/// swapped-channel fingerprint. Near-gray pixels (`R≈B`) carry no channel-order
-/// signal and are ignored; a wholly gray/neutral texture is never flagged.
-fn texture_is_implausibly_blue(rgba: &[u8]) -> bool {
-    let pixel_count = rgba.len() / 4;
-    if pixel_count == 0 {
-        return false;
-    }
-    // Cap the scan at ~4096 evenly-strided pixels regardless of texture size.
-    let stride = (pixel_count / 4096).max(1);
-    let mut red_sum = 0u64;
-    let mut blue_sum = 0u64;
-    let mut counted = 0u64;
-    for pixel in rgba.chunks_exact(4).step_by(stride) {
-        if pixel[3] < 8 {
-            continue; // transparent: no color signal
-        }
-        let red = u32::from(pixel[0]);
-        let blue = u32::from(pixel[2]);
-        if red.abs_diff(blue) < 16 {
-            continue; // near-gray: no channel-order signal
-        }
-        red_sum += u64::from(red);
-        blue_sum += u64::from(blue);
-        counted += 1;
-    }
-    if counted == 0 {
-        return false;
-    }
-    let red_mean = red_sum / counted;
-    let blue_mean = blue_sum / counted;
-    // Blue must beat red by a clear margin (≥25% of red, at least 24 levels) to
-    // trip — conservative, so a merely cool-but-valid texture is never flipped.
-    blue_mean > red_mean + (red_mean / 4).max(24)
-}
-
 fn parse_raw_texture_image(
     open_tag: &str,
     bytes: &[u8],
@@ -205,12 +148,18 @@ fn parse_raw_texture_image(
         return Ok(None);
     };
 
-    validate_texture_dimensions(width, height)?;
-
-    let raw_len = raw_texture_len(width, height, bytes_per_pixel)?;
-    if bytes.len() != raw_len {
+    // Width/Height/BytesPerPixel describe the raw HPS representation, but HPS
+    // exporters also store JPEG/PNG payloads with the same metadata. Compare
+    // the body length before applying raw-pixel limits; otherwise a valid
+    // compressed 8192x4096 atlas is rejected as if it already contained 128 MiB
+    // of RGBA pixels.
+    let Some(raw_len) = raw_texture_len(width, height, bytes_per_pixel) else {
+        return Ok(None);
+    };
+    if u64::try_from(bytes.len()).ok() != Some(raw_len) {
         return Ok(None);
     }
+    validate_texture_dimensions(width, height)?;
 
     // Deterministic decode (no pixel-content guessing): honor an explicit,
     // unambiguous pixel-format declaration when present; otherwise fall back to
@@ -346,12 +295,11 @@ fn optional_u32_attr(open_tag: &str, attr: &str) -> Result<Option<u32>, HpsError
         .transpose()
 }
 
-fn raw_texture_len(width: u32, height: u32, bytes_per_pixel: u32) -> Result<usize, HpsError> {
+fn raw_texture_len(width: u32, height: u32, bytes_per_pixel: u32) -> Option<u64> {
     width
         .checked_mul(height)
         .and_then(|pixels| pixels.checked_mul(bytes_per_pixel))
-        .and_then(|len| usize::try_from(len).ok())
-        .ok_or_else(|| texture_malformed("raw texture image size overflow"))
+        .map(u64::from)
 }
 
 fn decode_per_vertex_texture_coordinates(
@@ -462,58 +410,5 @@ fn decode_packed_texture_component(component: u16) -> f32 {
         value / 32767.0
     } else {
         value * (512.0 / 32767.0) - 256.0
-    }
-}
-
-#[cfg(test)]
-mod channel_prior_tests {
-    #![allow(clippy::expect_used)]
-
-    use super::{correct_channel_order_for_dental, texture_is_implausibly_blue};
-    use crate::DecodedTexture;
-
-    fn solid(width: u32, height: u32, rgb: [u8; 3]) -> DecodedTexture {
-        let n = (width * height) as usize;
-        let mut rgba = Vec::with_capacity(n * 4);
-        for _ in 0..n {
-            rgba.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
-        }
-        DecodedTexture::new(width, height, rgba).expect("solid texture is valid")
-    }
-
-    #[test]
-    fn swapped_red_gingiva_is_corrected_back_to_warm() {
-        // Red gingiva (200,60,55) rendered bright blue by a swapped R<->B order
-        // (55,60,200) — the owner's exact symptom. The prior must swap it back.
-        let blue = solid(8, 8, [55, 60, 200]);
-        assert!(texture_is_implausibly_blue(blue.rgba()));
-        let fixed = correct_channel_order_for_dental(blue);
-        assert_eq!(&fixed.rgba()[0..3], &[200, 60, 55], "red must be restored");
-    }
-
-    #[test]
-    fn already_warm_texture_is_left_untouched() {
-        // Warm enamel/gingiva mix: red dominant. Must never be cooled.
-        let warm = solid(8, 8, [210, 170, 150]);
-        assert!(!texture_is_implausibly_blue(warm.rgba()));
-        let same = correct_channel_order_for_dental(warm.clone());
-        assert_eq!(same.rgba(), warm.rgba());
-    }
-
-    #[test]
-    fn neutral_gray_texture_is_never_flagged() {
-        // A near-gray texture carries no channel-order signal — leave it alone.
-        let gray = solid(8, 8, [128, 130, 129]);
-        assert!(!texture_is_implausibly_blue(gray.rgba()));
-        let same = correct_channel_order_for_dental(gray.clone());
-        assert_eq!(same.rgba(), gray.rgba());
-    }
-
-    #[test]
-    fn a_faintly_cool_but_valid_texture_is_not_flipped() {
-        // Slightly cool (blue a touch above red) but within the conservative
-        // margin — must NOT be treated as a swap.
-        let cool = solid(8, 8, [150, 150, 168]);
-        assert!(!texture_is_implausibly_blue(cool.rgba()));
     }
 }
