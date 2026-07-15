@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.3 - 2026-07-15
+
+- Made Export Layer open in the source file's folder and preselect its
+  writable mesh format for STL, PLY, and OBJ sources.
+- Kept derived layers usable with a scene-source folder fallback and an
+  explicit PLY fallback for readable formats without a matching writer.
+- Added export warnings for payloads that the selected mesh format cannot
+  preserve, plus regression coverage for source and derived layers.
+
 ## 1.0.2 - 2026-07-15
 
 - Made Bridge Split rebuild source normals on a private working copy, so
