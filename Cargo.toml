@@ -88,6 +88,7 @@ rayon   = "1.10"
 thiserror = "1.0"
 anyhow    = "1.0"           # binaries only
 manifold-csg = "0.3.3"      # robust native CSG fallback for pathological CAD meshes
+earcutr = "0.5.0"           # constrained planar triangulation for caps with inner rims
 
 # Serialization (glTF JSON parsing).
 serde      = { version = "1.0", features = ["derive"] }
