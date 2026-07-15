@@ -1,0 +1,47 @@
+# occluview-formats — file format readers/writers.
+# Layering: depends on occluview-core only.
+[package]
+name = "occluview-formats"
+description = "3D file format readers for OccluView: STL, PLY, OBJ, glTF, 3MF."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Private/offline builds may embed an obfuscated HPS key from
+# OCCLUVIEW_HPS_EMBEDDED_KEY at compile time. Release packaging may enable this
+# only from CI secrets; the key must never be stored in source or logs.
+private-hps-key = ["occluview-hps/private-hps-key"]
+
+[dependencies]
+occluview-core = { workspace = true }
+occluview-hps = { workspace = true }
+thiserror      = { workspace = true }
+tracing        = { workspace = true }
+rayon          = { workspace = true }
+glam           = { workspace = true }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+memmap2        = { workspace = true }
+zip            = { workspace = true }
+# PNG + JPEG decode for glTF texture images (GLB embeds them in bufferViews).
+image          = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = "3"
+
+[[example]]
+name = "smoke_real_files"
+path = "examples/smoke_real_files.rs"
+
+# NOTE: glTF loader (cgltf) and 3MF loader (lib3mf FFI) are added later
+# The v1 reader set is implemented incrementally; each loader ships with tests.

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-ply">
+    <comment>PLY mesh</comment>
+    <glob pattern="*.ply" />
+    <glob pattern="*.PLY" />
+  </mime-type>
+  <mime-type type="application/x-occluview-hps">
+    <comment>HPS mesh package</comment>
+    <glob pattern="*.hps" />
+    <glob pattern="*.HPS" />
+    <glob pattern="*.dcm" />
+    <glob pattern="*.DCM" />
+  </mime-type>
+</mime-info>

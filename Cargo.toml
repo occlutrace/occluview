@@ -1,0 +1,199 @@
+# OccluView — Cargo workspace root.
+#
+# Workspace layering:
+#   mesh-edit ← (nothing)
+#   hps       ← (no OccluView crates)
+#   core → mesh-edit (+ optional robust-csg bridge fallback)
+#   formats → core + hps
+#   render  → core
+#   thumbnail → core + render + formats
+#   shell   → core + render + formats + thumbnail
+#   app     → core + formats + render (+ shell on Windows for installer refresh)
+#   cli     → core + formats + render + thumbnail
+# Cycles are P0. Never add an upward dependency.
+#
+# License: Apache-2.0 (NOTICE + LICENSE).
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/occlu-mesh-edit",
+    "crates/occluview-robust-csg",
+    "crates/occluview-core",
+    "crates/occluview-hps",
+    "crates/occluview-formats",
+    "crates/occluview-render",
+    "crates/occluview-thumbnail",
+    "crates/occluview-shell",
+    "crates/occluview-update",
+    "crates/occluview-app",
+    "crates/occluview-cli",
+]
+# `cargo check/test` without `--workspace` uses default-members. Keep the
+# cross-platform app and logic crates here; the Windows COM shell crate remains
+# opt-in unless the full workspace is requested.
+default-members = [
+    "crates/occlu-mesh-edit",
+    "crates/occluview-core",
+    "crates/occluview-hps",
+    "crates/occluview-formats",
+    "crates/occluview-render",
+    "crates/occluview-thumbnail",
+    "crates/occluview-update",
+    "crates/occluview-app",
+    "crates/occluview-cli",
+]
+
+# Workspace-wide package metadata. Crates override only what they need.
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.86"        # MSRV; matches rust-toolchain.toml
+authors = ["Dental Cloud Technologies and contributors"]
+license = "Apache-2.0"
+repository = "https://github.com/occlutrace/occluview"
+homepage = "https://occlutrace.ai"
+publish = false              # we are not on crates.io yet
+
+# Shared dependency versions (single source of truth). Reference as
+# `dep = { workspace = true }` in each crate's [dependencies].
+[workspace.dependencies]
+# Internal crates.
+occlu-mesh-edit  = { path = "crates/occlu-mesh-edit", version = "1.0.0" }
+occluview-robust-csg = { path = "crates/occluview-robust-csg", version = "1.0.0" }
+occluview-core    = { path = "crates/occluview-core", version = "1.0.0" }
+occluview-hps = { path = "crates/occluview-hps", version = "1.0.0" }
+occluview-formats = { path = "crates/occluview-formats", version = "1.0.0" }
+occluview-render  = { path = "crates/occluview-render", version = "1.0.0" }
+occluview-thumbnail = { path = "crates/occluview-thumbnail", version = "1.0.0" }
+occluview-shell   = { path = "crates/occluview-shell", version = "1.0.0" }
+occluview-update  = { path = "crates/occluview-update", version = "1.0.0" }
+
+# Math / numerics.
+glam    = "0.29"            # permissive (MIT OR Apache-2.0)
+bytemuck = { version = "1.18", features = ["derive"] }
+
+# HPS package compatibility. Parser dependencies are
+# isolated to the product-neutral occluview-hps leaf crate.
+adler2   = "2.0.1"
+blowfish = { version = "0.10.0", features = ["zeroize"] }
+md-5     = "0.11.0"
+sha2     = "0.10"
+zeroize  = { version = "1.9.0", features = ["derive"] }
+
+# Parallelism / async.
+rayon   = "1.10"
+
+# Error handling.
+thiserror = "1.0"
+anyhow    = "1.0"           # binaries only
+manifold-csg = "0.3.3"      # robust native CSG fallback for pathological CAD meshes
+
+# Serialization (glTF JSON parsing).
+serde      = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime for offscreen render in the GUI app.
+pollster   = "0.4"
+
+# Image encode/decode: PNG for golden tests + thumbnail output, JPEG for glTF
+# texture images (dental GLBs commonly embed JPEG textures). 0.25.10 raises
+# MSRV to 1.88; stay below it while rust-toolchain.toml pins 1.86.
+image      = { version = ">=0.25.5, <0.25.10", default-features = false, features = ["png", "jpeg"] }
+
+# Memory-mapped file loading for large meshes.
+memmap2    = "0.9"
+
+# ZIP package container support for HPS archives. Keep features
+# narrow: ordinary scanner packages use stored/deflated entries.
+zip        = { version = "2.4.2", default-features = false, features = ["deflate"] }
+
+# Logging.
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# GPU / rendering.
+wgpu = "22.0"               # pinned; bumps need tests and a changelog entry
+
+# Windowing / GUI.
+egui    = "0.29"
+eframe  = { version = "0.29", default-features = false, features = ["wgpu", "default_fonts"] }
+rfd     = { version = "0.14", default-features = false, features = ["xdg-portal", "async-std"] }
+
+# Windows bindings (shell + windowing interop) — windows-rs only.
+# Target = x86_64-pc-windows-msvc (rust-toolchain.toml).
+target-our-windows = { version = "0", package = "windows", features = [
+    # COM plumbing
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+    # Shell / thumbnail provider
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_Graphics_Imaging",
+    # GDI for HBITMAP interop
+    "Win32_Graphics_Gdi",
+] }
+
+# Format loaders.
+# cgltf is a single-file C header; we build it via the `cc` crate in
+# occluview-formats/build.rs.
+cc = "1.1"
+
+# Testing.
+proptest = "1.5"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Workspace lints — applied to every crate via `lints.workspace = true`.
+[workspace.lints.rust]
+# `rust_2018_idioms` is a group; specific lints below must override it, so set
+# the group priority to -1.
+rust_2018_idioms         = { level = "deny", priority = -1 }
+unsafe_op_in_unsafe_fn   = "deny"
+missing_docs             = "warn"
+unused_qualifications    = "warn"
+
+[workspace.lints.clippy]
+# `pedantic` and `all` are groups; specific lints below must override them, so
+# set the group priority to -1 (clippy requires this for overrides to win).
+pedantic      = { level = "warn", priority = -1 }
+all           = { level = "warn", priority = -1 }
+# Complexity/hygiene lints.
+unwrap_used       = "deny"
+expect_used       = "deny"
+panic             = "deny"
+todo              = "deny"
+unimplemented     = "deny"
+dbg_macro         = "deny"
+print_stdout      = "deny"
+print_stderr      = "deny"
+# Sensible pedantic relaxations (override per-crate with justification).
+module_name_repetitions = { level = "allow", priority = 1 }
+must_use_candidate      = { level = "allow", priority = 1 }
+needless_pass_by_value  = { level = "allow", priority = 1 }
+
+[profile.release]
+# Strongly optimize the viewer and shell DLL.
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+debug = false
+panic = "abort"
+
+# The Explorer shell DLL builds with THIS profile: panic = "abort" in a cdylib
+# hosted by dllhost.exe turns any panic into an abort of the whole surrogate
+# process, blanking every thumbnail in the folder. Unwinding lets the COM
+# boundary's catch_unwind substitute a placeholder instead.
+[profile.release-unwind]
+inherits = "release"
+panic = "unwind"
+
+[profile.bench]
+inherits = "release"
+
+[profile.dev]
+opt-level = 1                # faster dev runs for the wgpu hot path
+debug = 1
