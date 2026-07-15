@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 - 2026-07-14
+## 1.0.0 - 2026-07-15
 
 - Declared the first stable release after the viewer, editor, HPS path,
   Windows Explorer integration, Linux packaging, and update channel reached a

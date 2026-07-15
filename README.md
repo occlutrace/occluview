@@ -20,6 +20,8 @@ up when needed, and keep the file manager useful while browsing case folders.
 OccluView is the open-source desktop viewer of the
 [OccluTrace](https://occlutrace.ai) platform for dental labs.
 
+The current stable release is [v1.0.0](https://github.com/occlutrace/OccluView/releases/tag/v1.0.0).
+
 ## Features
 
 - **Viewer** — full-window 3D viewport with CAD-style navigation (right-drag
@@ -59,9 +61,9 @@ STL decoding and normal generation are parallel; numbers scale with cores.
 
 ## Distribution
 
-This repository currently carries the source baseline only. Binary packages
-are intentionally not attached to this history reset; the next tagged release
-will publish the Windows and Linux artifacts together.
+The current stable release is [OccluView v1.0.0](https://github.com/occlutrace/OccluView/releases/tag/v1.0.0).
+Windows and Linux packages, checksums, signatures, and release notes are
+published on the GitHub release page.
 
 The release package layout is:
 
@@ -150,11 +152,12 @@ input paths, filenames, parser details, and key material.
 
 ## Status
 
-The source baseline is `1.0.0`. The viewer, mesh loaders and editor, renderer,
-Windows shell extension, MSI, Debian packaging, and signed update channel are
-maintained as one release-tested product. The platform-neutral thumbnail
-pipeline is shared by the Linux thumbnailer, the Windows shell extension, and
-the headless CLI; the Windows COM layer contains only Explorer integration.
+The public release baseline is `1.0.0`. The viewer, mesh loaders and editor,
+renderer, Windows shell extension, MSI, Debian packaging, and signed update
+channel are maintained as one release-tested product. The platform-neutral
+thumbnail pipeline is shared by the Linux thumbnailer, the Windows shell
+extension, and the headless CLI; the Windows COM layer contains only Explorer
+integration.
 
 The update manifest and downloadable update artifacts are minisign-verified.
 Windows Authenticode signing is not enabled in the public CI configuration yet;
