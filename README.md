@@ -4,87 +4,54 @@
 
 <h1 align="center">OccluView</h1>
 
-<p align="center">
-  Native 3D viewer and lightweight mesh editor for dental scans.
-</p>
+<p align="center">A fast native 3D viewer for dental scans and mesh files.</p>
 
 <p align="center">
   <img src="assets/screenshot1.png" alt="OccluView showing a dental scan" width="820">
 </p>
 
-OccluView is an open-source desktop viewer from Dental Cloud Technologies for
-dental scans and common mesh files.
+OccluView opens large 3D files quickly and keeps the workspace focused on the
+model. It supports multiple layers, measurement tools, basic mesh editing,
+Windows Explorer integration, and a native Linux package.
 
 ## Features
 
-- Full-window orthographic 3D viewport with orbit, pan, retargeting, cut view,
-  ruler, and wall-thickness measurement.
+- Orthographic 3D viewport with orbit, pan, cut view, ruler, and thickness measurement.
 - Multiple layers with visibility, opacity, tint, and wireframe controls.
-- Face selection by click, rectangle, or lasso, with surface and through-mesh
-  modes.
-- Mesh editing: delete, crop, cut, separate, close selected holes, keep the
-  largest component, invert normals, repair, smooth, and undo/redo.
-- Windows Explorer thumbnails, live Preview Pane, file associations, and
-  context-menu integration installed by the MSI.
-- Native Linux desktop integration with MIME registration and a thumbnailer.
+- Selection by click, rectangle, or lasso.
+- Mesh editing with delete, crop, cut, separate, close holes, repair, smooth, and undo/redo.
+- Windows thumbnails, Preview Pane, file associations, and context-menu integration.
+- Linux desktop integration with MIME registration and a thumbnailer.
 
 <p align="center">
   <img src="assets/animation.gif" alt="OccluView live Windows Preview Pane" width="820">
 </p>
 
-## Formats
+## Supported formats
 
-| Format | Support |
-| --- | --- |
-| `.stl` | Binary and ASCII mesh |
-| `.ply` | Binary and ASCII mesh with vertex colors |
-| `.obj` | Mesh and vertex colors |
-| `.glb` | Meshes with embedded textures supported by the viewer |
-| `.hps` | native HPS mesh support in release packages |
-| `.dcm` | legacy alias for HPS containers |
-
-In OccluView, `.dcm` means the proprietary 3Shape dental container. It is not
-medical DICOM. Encrypted HPS files read the key from
-`OCCLUVIEW_HPS_ENCRYPTION_KEY` (legacy environment aliases are also accepted);
-the key is never taken from command arguments or written to output.
-
-## Windows
-
-The MSI installer registers supported mesh formats and installs the Explorer
-thumbnail and Preview Pane handlers. Opening another file while OccluView is
-already running adds it to the current scene instead of opening another window.
-File types use neutral names and one shared 3D-object icon.
-
-## Linux
-
-The Debian package installs the application, desktop entry, MIME registration,
-icon, and thumbnailer.
-
-## Performance
-
-Measured end to end on a Ryzen 5 3600 with a warm file cache:
-
-| File | Size | Open time |
-| --- | --- | --- |
-| Intraoral scan, 300k triangles | 15 MB binary STL | about 0.1 s |
-| 1M triangles | 50 MB binary STL | about 0.4 s |
-| 5M triangles | 250 MB binary STL | about 1.8 s |
-
-Results depend on storage, CPU, mesh topology, and texture data.
+- `.stl` - binary and ASCII meshes
+- `.ply` - binary and ASCII meshes with vertex colors
+- `.obj` - meshes and vertex colors
+- `.glb` - meshes with embedded textures
+- `.hps` and `.dcm` - HPS mesh containers
 
 ## Download
 
-The latest release is [v1.0.2](https://github.com/occlutrace/OccluView/releases/tag/v1.0.2).
+[Download the latest release](https://github.com/occlutrace/OccluView/releases/latest)
 
-- **Windows MSI**: normal installation with Explorer integration.
-- **Windows portable ZIP**: runs without installation or Explorer integration.
-- **Debian package**: for Debian, Ubuntu, and compatible desktops.
+The release page contains the Windows installer, portable Windows archive,
+Debian package, and SHA-256 checksums.
 
-```bash
-sudo apt install ./occluview_<version>_amd64.deb
-```
+## Windows
 
-Release files include SHA-256 checksums.
+The MSI installs the viewer together with Explorer thumbnails, Preview Pane
+support, file associations, and the shared 3D-object icon. Opening another
+file while the viewer is running adds it to the current scene.
+
+## Linux
+
+The Debian package installs the viewer, desktop entry, MIME registration,
+icon, and thumbnailer.
 
 ## Build from source
 
@@ -95,26 +62,10 @@ cargo test --workspace --all-targets
 cargo run -p occluview-app --release -- path/to/scan.stl
 ```
 
-Generate a thumbnail with the CLI:
-
-```bash
-cargo run -p occluview-cli --release -- thumbnail scan.stl -o thumb.png --size 256
-```
-
-For HPS conversion, the CLI writes `surface.ply`, an optional textured
-`surface.glb`, and `manifest.json` to the selected output directory:
-
-```bash
-cargo run -p occluview-cli --bin occluview-hps-export --release -- \
-  --input scan.hps \
-  --output-dir ./converted
-```
-
-The converter always uses these fixed output names. `manifest.json` is schema
-version 2: it contains the parser version, a required geometry artifact, and an
-optional textured preview artifact. The same JSON object is printed on stdout;
-each artifact records its relative format, path, and lowercase SHA-256.
-
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+---
+
+OccluTrace
