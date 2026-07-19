@@ -6,21 +6,31 @@
   cap met the surrounding surface after a lasso cut, and raised the cap size
   this covers (#9).
 - Added a per-layer toggle to hide scan colors/texture and show a flat
-  neutral material instead, and a one-click Smooth action for a marked face
-  selection (#10, #11).
+  neutral material instead (#10).
+- Added interactive sculpting to the Mesh Editor (#11), on its own Sculpt tab
+  beside Edit Mesh: two tools dragged directly on the scan — an Add/Remove clay
+  knife (hold Shift to carve) and a Smooth relaxer (hold Shift to force it) —
+  with Size and Force sliders, Shift/Ctrl + mouse wheel to resize/re-intensify,
+  a soft glow cursor that brightens with intensity, and one undo step per
+  stroke. Add/Remove moves the brushed region coherently toward the camera
+  (robust to a scan's inverted-normal patches) and cleans the surface as it
+  goes, so it builds and carves smoothly instead of leaving potholes, spikes,
+  or grain; Smooth flattens strongly while pinning the scan's open edges. Press
+  1 (Add/Remove) or 2 (Smooth) to switch tools. Runs at interactive speed even
+  on million-triangle scans (parallel, spatially indexed, CSR connectivity).
+  Replaces the earlier one-click Smooth-selection button.
 - Fixed DCM/HPS scans whose embedded JPEG texture atlas had its chroma
   swapped at the source, decoding blue where gingiva/enamel should read warm
   — and tightened the correction so it only fires on a whole-texture bias,
   not a real localized blue material (anti-glare spray, bite-registration
   silicone) sitting next to normal tissue color (#12).
-- Fixed the Bridge Split / Cut View cutting disc jittering as the cursor
-  moved and defaulting to a longitudinal orientation along the scan: it now
-  reads its cross-arch direction from the scan's own stable shape instead of
-  a single noisy triangle normal, so it lands transverse across the arch and
-  keeps tracking the local curve as the cursor moves around it — while still
-  containing the current view direction, so it stays edge-on and legible and
-  keeps re-aiming itself as the operator orbits the camera, exactly like it
-  did before this fix.
+- Fixed the Bridge Split / Cut View cutting disc misreading the arch as the
+  cursor moved: its orientation is now purely anatomical — the disc stands
+  upright (along the scan's occlusal axis) and cuts transverse across the
+  arch at the exact spot under the cursor, turning continuously as the
+  cursor sweeps around the curve. The camera no longer participates at all,
+  so the disc keeps the same correct cut from any viewing angle instead of
+  tipping flat at the sides of the arch from a facial or tilted view.
 
 ## 1.0.3 - 2026-07-15
 
