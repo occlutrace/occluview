@@ -39,6 +39,11 @@ struct MeshUniform {
     show_orientation: u32,
     // 0 = ignore scan color/texture, shade with NEUTRAL_MATERIAL_RGB instead.
     show_vertex_colors: u32,
+    // 0 = do not sample an attached texture; vertex colors remain independent.
+    show_texture: u32,
+    _padding_0: u32,
+    _padding_1: u32,
+    _padding_2: u32,
 }
 
 @group(0) @binding(0) var<uniform> camera: Camera;
@@ -218,7 +223,7 @@ fn fs_main(
     if (mesh_uniform.show_vertex_colors == 0u) {
         base_rgb = NEUTRAL_MATERIAL_RGB;
         base_a = 1.0;
-    } else if (mesh_uniform.has_texture != 0u) {
+    } else if (mesh_uniform.has_texture != 0u && mesh_uniform.show_texture != 0u) {
         let tex = textureSample(mesh_texture, mesh_sampler, in.uv);
         base_rgb = tex.rgb;
         base_a = tex.a;
@@ -231,7 +236,9 @@ fn fs_main(
     let tinted = vec4<f32>(base_rgb, base_a) * mesh_uniform.tint;
     let form_contrast = 0.96 + 0.055 * view_form + 0.018 * fresnel;
     // Neutral material reads as matte stone, never the textured glaze.
-    let textured = mesh_uniform.has_texture != 0u && mesh_uniform.show_vertex_colors != 0u;
+    let textured = mesh_uniform.has_texture != 0u
+        && mesh_uniform.show_texture != 0u
+        && mesh_uniform.show_vertex_colors != 0u;
     let texture_glaze = select(0.0, 1.0, textured);
     let clay_highlight = (1.0 - texture_glaze) * (0.018 * tight_specular + 0.008 * fresnel);
     let glaze_highlight =
@@ -318,7 +325,7 @@ fn fs_ghost(in: VertexOut) -> @location(0) vec4<f32> {
     var base_rgb: vec3<f32>;
     if (mesh_uniform.show_vertex_colors == 0u) {
         base_rgb = NEUTRAL_MATERIAL_RGB;
-    } else if (mesh_uniform.has_texture != 0u) {
+    } else if (mesh_uniform.has_texture != 0u && mesh_uniform.show_texture != 0u) {
         base_rgb = textureSample(mesh_texture, mesh_sampler, in.uv).rgb;
     } else {
         base_rgb = in.color;
