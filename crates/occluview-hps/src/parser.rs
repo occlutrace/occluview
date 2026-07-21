@@ -195,11 +195,12 @@ fn build_surface(
     colors: Option<Vec<[u8; 4]>>,
     texture: Option<texture::SurfaceTexture>,
 ) -> Result<DecodedSurface, HpsError> {
-    let normals = smooth_normals(&positions, &indices);
     let Some(texture) = texture else {
+        let normals = smooth_normals(&positions, &indices);
         return DecodedSurface::new(positions, indices, colors, None, None)?.with_normals(normals);
     };
     let Some(corner_uvs) = texture.corner_uvs else {
+        let normals = smooth_normals(&positions, &indices);
         return DecodedSurface::new(positions, indices, colors, None, texture.texture)?
             .with_normals(normals);
     };
@@ -209,46 +210,10 @@ fn build_surface(
         });
     }
 
-    let mut split_positions = Vec::with_capacity(indices.len());
-    let mut split_indices = Vec::with_capacity(indices.len());
-    let mut split_colors = colors.as_ref().map(|_| Vec::with_capacity(indices.len()));
-    let mut split_uvs = Vec::with_capacity(indices.len());
-    let mut split_normals = Vec::with_capacity(indices.len());
-    for (corner, &source_index) in indices.iter().enumerate() {
-        let source_index = usize::try_from(source_index)
-            .map_err(|_| malformed("textured vertex index out of bounds"))?;
-        split_positions.push(
-            *positions
-                .get(source_index)
-                .ok_or_else(|| malformed("textured vertex index out of bounds"))?,
-        );
-        if let (Some(source_colors), Some(target_colors)) = (&colors, &mut split_colors) {
-            target_colors.push(
-                *source_colors
-                    .get(source_index)
-                    .ok_or_else(|| malformed("textured color index out of bounds"))?,
-            );
-        }
-        split_normals.push(
-            *normals
-                .get(source_index)
-                .ok_or_else(|| malformed("textured normal index out of bounds"))?,
-        );
-        split_uvs.push(corner_uvs[corner].unwrap_or([0.0, 0.0]));
-        split_indices.push(u32::try_from(corner).map_err(|_| HpsError::ResourceLimit {
-            resource: "texture seam vertex count",
-            limit: u64::from(u32::MAX),
-        })?);
-    }
-
-    DecodedSurface::new(
-        split_positions,
-        split_indices,
-        split_colors,
-        Some(split_uvs),
-        texture.texture,
-    )?
-    .with_normals(split_normals)
+    let normals = smooth_normals(&positions, &indices);
+    DecodedSurface::new(positions, indices, colors, None, texture.texture)?
+        .with_corner_uvs(corner_uvs)?
+        .with_normals(normals)
 }
 
 fn smooth_normals(positions: &[[f32; 3]], indices: &[u32]) -> Vec<[f32; 3]> {
@@ -463,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn uv_seam_split_preserves_pre_split_smooth_normals() {
+    fn corner_uvs_preserve_pre_split_smooth_normals() {
         let surface = build_surface(
             vec![
                 [0.0, 0.0, 0.0],
@@ -486,8 +451,6 @@ mod tests {
                 [
                     [diagonal, 0.0, diagonal],
                     [0.0, 0.0, 1.0],
-                    [diagonal, 0.0, diagonal],
-                    [diagonal, 0.0, diagonal],
                     [diagonal, 0.0, diagonal],
                     [1.0, 0.0, 0.0],
                 ]

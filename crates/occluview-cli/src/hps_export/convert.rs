@@ -14,8 +14,10 @@ pub(crate) fn convert(
     stdout: &mut impl Write,
 ) -> Result<(), CliError> {
     let input = read_input(&arguments.input, stdin)?;
-    let mesh = match occluview_formats::hps::read_bytes_with_runtime_key_provider(&input) {
-        Ok(mesh) => mesh,
+    let surface = match occluview_formats::hps::read_decoded_surface_bytes_with_runtime_key_provider(
+        &input,
+    ) {
+        Ok(surface) => surface,
         Err(occluview_formats::hps::HpsReadError::Parser(error)) => {
             return Err(CliError::from_parser(error));
         }
@@ -26,17 +28,21 @@ pub(crate) fn convert(
             return Err(CliError::SurfaceConversionFailed);
         }
     };
-    let textured = mesh.texture().is_some();
+    let geometry_mesh = occluview_formats::hps::geometry_mesh_from_decoded_surface(&surface)
+        .map_err(|_| CliError::SurfaceConversionFailed)?;
+    let preview_mesh = occluview_formats::hps::mesh_from_decoded_surface(surface)
+        .map_err(|_| CliError::SurfaceConversionFailed)?;
+    let textured = preview_mesh.texture().is_some();
     let mut geometry = Vec::new();
     occluview_formats::write_mesh(
         &mut geometry,
-        &mesh,
+        &geometry_mesh,
         MeshWriteFormat::PlyBinaryLittleEndian,
         MeshWriteOptions::default(),
     )
     .map_err(|_| CliError::ArtifactEncodingFailed)?;
     let preview = textured
-        .then(|| occluview_formats::write_textured_glb(&mesh))
+        .then(|| occluview_formats::write_textured_glb(&preview_mesh))
         .transpose()
         .map_err(|_| CliError::ArtifactEncodingFailed)?;
     let manifest = Manifest::new(&geometry, preview.as_deref());

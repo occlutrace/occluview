@@ -15,7 +15,7 @@ use crate::tests::{append_packed_uv, cc_fixture, encode_base64, red_png_bytes, s
 use std::io::Cursor;
 
 #[test]
-fn texture_data_splits_corner_uvs_and_attaches_texture() {
+fn texture_data_preserves_source_topology_and_corner_uvs() {
     let mut uv_bytes = Vec::new();
     uv_bytes.push(2);
     append_packed_uv(&mut uv_bytes, 0.0, 0.0);
@@ -43,15 +43,16 @@ fn texture_data_splits_corner_uvs_and_attaches_texture() {
         encode_base64(&png_bytes)
     );
 
-    let mesh = read(&cc_fixture(4, 2, &[4, 0], &extra)).expect("textured HPS should read");
-    assert_eq!(mesh.indices(), &[0, 1, 2, 3, 4, 5]);
-    assert_eq!(mesh.positions().len(), 6);
-    let uvs = mesh.uvs().expect("texture coordinates should be present");
-    assert_eq!(uvs[0], [0.0, 0.0]);
-    assert!((uvs[5][0] - 0.75).abs() < 0.0001);
-    assert!((uvs[5][1] - 0.25).abs() < 0.0001);
+    let surface = read(&cc_fixture(4, 2, &[4, 0], &extra)).expect("textured HPS should read");
+    assert_eq!(surface.positions().len(), 4);
+    assert_eq!(surface.indices().len(), 6);
+    let corner_uvs = surface
+        .corner_uvs()
+        .expect("texture coordinates should be corner indexed");
+    assert_eq!(corner_uvs.len(), surface.indices().len());
+    assert_eq!(corner_uvs[0], Some([0.0, 0.0]));
 
-    let texture = mesh.texture().expect("HPS texture should be attached");
+    let texture = surface.texture().expect("HPS texture should be attached");
     assert_eq!(texture.width(), 2);
     assert_eq!(texture.height(), 2);
     assert!(texture

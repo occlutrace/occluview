@@ -73,14 +73,20 @@ impl DecodedTexture {
 
 /// Product-neutral triangle surface decoded from HPS data.
 ///
-/// Texture seams are represented by split vertices, so optional UVs, colors,
-/// and normals always have the same length as `positions`.
+/// Positions and indices always describe the source CAD topology. Texture UVs
+/// are kept separately as corner attributes because a single source vertex can
+/// legitimately have different UVs on adjacent triangle corners. Renderers may
+/// split those corners later; geometry exporters must not inherit that split.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DecodedSurface {
     positions: Vec<[f32; 3]>,
     indices: Vec<u32>,
     colors: Option<Vec<[u8; 4]>>,
+    /// Optional legacy per-vertex UVs for formats whose UV model is indexed by
+    /// position rather than by triangle corner.
     uvs: Option<Vec<[f32; 2]>>,
+    /// Optional HPS UVs in triangle-corner order. Length equals `indices.len()`.
+    corner_uvs: Option<Vec<Option<[f32; 2]>>>,
     normals: Option<Vec<[f32; 3]>>,
     texture: Option<DecodedTexture>,
 }
@@ -94,9 +100,11 @@ pub struct DecodedSurfaceParts {
     pub indices: Vec<u32>,
     /// Optional per-vertex RGBA8 colors.
     pub colors: Option<Vec<[u8; 4]>>,
-    /// Optional per-vertex UVs after seam splitting.
+    /// Optional per-vertex UVs for legacy indexed UV data.
     pub uvs: Option<Vec<[f32; 2]>>,
-    /// Optional finite per-vertex normals after seam splitting.
+    /// Optional HPS UVs in triangle-corner order.
+    pub corner_uvs: Option<Vec<Option<[f32; 2]>>>,
+    /// Optional finite per-source-vertex normals.
     pub normals: Option<Vec<[f32; 3]>>,
     /// Optional decoded RGBA8 texture.
     pub texture: Option<DecodedTexture>,
@@ -143,9 +151,7 @@ impl DecodedSurface {
         }
         if let Some(uvs) = &uvs {
             if uvs.len() != positions.len() {
-                return Err(texture_malformed(
-                    "UV count does not match seam-split position count",
-                ));
+                return Err(texture_malformed("UV count does not match position count"));
             }
             if uvs.iter().flatten().any(|component| !component.is_finite()) {
                 return Err(texture_malformed("UV coordinates must be finite"));
@@ -157,6 +163,7 @@ impl DecodedSurface {
             indices,
             colors,
             uvs,
+            corner_uvs: None,
             normals: None,
             texture,
         })
@@ -184,6 +191,34 @@ impl DecodedSurface {
         Ok(self)
     }
 
+    /// Attach optional UV coordinates in triangle-corner order.
+    ///
+    /// The source HPS representation permits one position to have a different
+    /// UV on different incident faces. Keeping this data indexed by corners
+    /// preserves the source topology until a render-specific adapter chooses
+    /// where seams must be split.
+    ///
+    /// # Errors
+    /// Returns [`HpsError::TextureMalformed`] when the corner count differs
+    /// from the index count or a provided UV is non-finite.
+    pub fn with_corner_uvs(mut self, corner_uvs: Vec<Option<[f32; 2]>>) -> Result<Self, HpsError> {
+        if corner_uvs.len() != self.indices.len() {
+            return Err(texture_malformed(
+                "corner UV count does not match triangle corner count",
+            ));
+        }
+        if corner_uvs
+            .iter()
+            .flatten()
+            .flatten()
+            .any(|component| !component.is_finite())
+        {
+            return Err(texture_malformed("corner UV coordinates must be finite"));
+        }
+        self.corner_uvs = Some(corner_uvs);
+        Ok(self)
+    }
+
     /// Vertex positions as finite XYZ triples.
     #[must_use]
     pub fn positions(&self) -> &[[f32; 3]] {
@@ -202,13 +237,19 @@ impl DecodedSurface {
         self.colors.as_deref()
     }
 
-    /// Optional per-vertex UVs after texture seam splitting.
+    /// Optional per-vertex UVs for legacy indexed UV data.
     #[must_use]
     pub fn uvs(&self) -> Option<&[[f32; 2]]> {
         self.uvs.as_deref()
     }
 
-    /// Optional finite per-vertex normals after seam splitting.
+    /// Optional HPS UVs in triangle-corner order.
+    #[must_use]
+    pub fn corner_uvs(&self) -> Option<&[Option<[f32; 2]>]> {
+        self.corner_uvs.as_deref()
+    }
+
+    /// Optional finite per-source-vertex normals.
     #[must_use]
     pub fn normals(&self) -> Option<&[[f32; 3]]> {
         self.normals.as_deref()
@@ -228,6 +269,7 @@ impl DecodedSurface {
             indices: self.indices,
             colors: self.colors,
             uvs: self.uvs,
+            corner_uvs: self.corner_uvs,
             normals: self.normals,
             texture: self.texture,
         }

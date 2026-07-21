@@ -158,9 +158,20 @@ impl occluview_hps::HpsKeyProvider for ProviderAdapter<'_> {
 /// [`FormatError::Unsupported`] for medical DICOM, and typed malformed format
 /// errors for invalid dental HPS data.
 pub fn read(bytes: &[u8]) -> Result<Mesh, FormatError> {
-    occluview_hps::read(bytes)
-        .map_err(map_parser_error)
-        .and_then(mesh::build_mesh)
+    read_decoded_surface(bytes).and_then(mesh::build_mesh)
+}
+
+/// Read raw HPS XML or a dental HPS package while preserving source topology.
+///
+/// This is the export-facing form of the HPS reader. Its indices reference the
+/// original positions, while textured UVs remain indexed by triangle corner.
+/// Use [`read`] when a render-ready [`Mesh`] is required.
+///
+/// # Errors
+/// Returns [`FormatError`] when the input is not a supported HPS payload or
+/// fails parser validation.
+pub fn read_decoded_surface(bytes: &[u8]) -> Result<occluview_hps::DecodedSurface, FormatError> {
+    occluview_hps::read(bytes).map_err(map_parser_error)
 }
 
 /// Read raw HPS XML or a dental HPS package with an explicit key provider.
@@ -172,9 +183,22 @@ pub fn read_with_key_provider(
     bytes: &[u8],
     key_provider: &dyn HpsKeyProvider,
 ) -> Result<Mesh, FormatError> {
+    read_decoded_surface_with_key_provider(bytes, key_provider).and_then(mesh::build_mesh)
+}
+
+/// Read HPS bytes with an explicit key provider while preserving source
+/// topology and corner-indexed texture coordinates.
+///
+/// # Errors
+/// Returns [`FormatError`] when parsing fails or the key provider rejects the
+/// encrypted payload.
+pub fn read_decoded_surface_with_key_provider(
+    bytes: &[u8],
+    key_provider: &dyn HpsKeyProvider,
+) -> Result<occluview_hps::DecodedSurface, FormatError> {
     let provider = ProviderAdapter(key_provider);
     match occluview_hps::read_with_key_provider(bytes, &provider) {
-        Ok(surface) => mesh::build_mesh(surface),
+        Ok(surface) => Ok(surface),
         Err(occluview_hps::ReadError::Parser(error)) => Err(map_parser_error(error)),
         Err(occluview_hps::ReadError::KeyProvider(error)) => Err(error),
     }
@@ -190,8 +214,20 @@ pub fn read_with_key_provider(
 /// Returns a stable HPS failure category when parsing, key resolution, or
 /// conversion into the core mesh model fails.
 pub fn read_bytes_with_runtime_key_provider(bytes: &[u8]) -> Result<Mesh, HpsReadError> {
+    let surface = read_decoded_surface_bytes_with_runtime_key_provider(bytes)?;
+    mesh::build_mesh(surface).map_err(HpsReadError::Surface)
+}
+
+/// Read HPS bytes with the runtime key provider while preserving the source
+/// CAD topology for a lossless geometry export.
+///
+/// # Errors
+/// Returns [`HpsReadError`] when parsing or runtime key resolution fails.
+pub fn read_decoded_surface_bytes_with_runtime_key_provider(
+    bytes: &[u8],
+) -> Result<occluview_hps::DecodedSurface, HpsReadError> {
     match occluview_hps::read_with_key_provider(bytes, &occluview_hps::RuntimeHpsKeyProvider) {
-        Ok(surface) => mesh::build_mesh(surface).map_err(HpsReadError::Surface),
+        Ok(surface) => Ok(surface),
         Err(occluview_hps::ReadError::Parser(error)) => {
             Err(HpsReadError::Parser(classify_parser_error(&error)))
         }
@@ -214,6 +250,18 @@ pub fn mesh_from_decoded_surface(
     surface: occluview_hps::DecodedSurface,
 ) -> Result<Mesh, FormatError> {
     mesh::build_mesh(surface)
+}
+
+/// Convert a decoded HPS surface into a source-topology mesh for geometry
+/// writers and mesh-processing operations.
+///
+/// # Errors
+/// Returns [`FormatError`] when the validated surface cannot be represented by
+/// the core mesh model.
+pub fn geometry_mesh_from_decoded_surface(
+    surface: &occluview_hps::DecodedSurface,
+) -> Result<Mesh, FormatError> {
+    mesh::build_geometry_mesh(surface)
 }
 
 fn map_parser_error(error: occluview_hps::HpsError) -> FormatError {

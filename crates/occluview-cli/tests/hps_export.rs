@@ -114,10 +114,22 @@ fn append_packed_uv(bytes: &mut Vec<u8>, u: f32, v: f32) {
 
 fn textured_hps() -> Vec<u8> {
     let mut uv_bytes = Vec::new();
-    for (u, v) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)] {
+    for (u, v) in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)] {
         uv_bytes.push(1);
         append_packed_uv(&mut uv_bytes, u, v);
     }
+    let mut vertex_bytes = Vec::new();
+    for position in [
+        [0.0_f32, 0.0, 0.0],
+        [1.0_f32, 0.0, 0.0],
+        [1.0_f32, 1.0, 0.0],
+        [0.0_f32, 1.0, 0.0],
+    ] {
+        for component in position {
+            vertex_bytes.extend_from_slice(&component.to_le_bytes());
+        }
+    }
+    let faces = [4_u8, 0_u8];
     let texture = [
         205, 164, 118, 255, 194, 151, 105, 255, 184, 144, 101, 255, 218, 176, 132, 255,
     ];
@@ -128,8 +140,8 @@ fn textured_hps() -> Vec<u8> {
     <Schema>CC</Schema>
     <Binary_data>
       <CC version="1.0">
-        <Facets facet_count="1" base64_encoded_bytes="1">BA==</Facets>
-        <Vertices vertex_count="3" base64_encoded_bytes="36">AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAA</Vertices>
+        <Facets facet_count="2" base64_encoded_bytes="{faces_len}">{faces}</Facets>
+        <Vertices vertex_count="4" base64_encoded_bytes="{vertices_len}">{vertices}</Vertices>
       </CC>
     </Binary_data>
   </Packed_geometry>
@@ -142,6 +154,10 @@ fn textured_hps() -> Vec<u8> {
 </HPS>"#,
         uv_len = uv_bytes.len(),
         uvs = encode_base64(&uv_bytes),
+        faces_len = faces.len(),
+        faces = encode_base64(&faces),
+        vertices_len = vertex_bytes.len(),
+        vertices = encode_base64(&vertex_bytes),
         texture_len = texture.len(),
         pixels = encode_base64(&texture),
     )
@@ -219,9 +235,14 @@ fn stdin_textured_input_writes_geometry_ply_and_self_contained_glb_preview() {
     assert!(output.stderr.is_empty());
     let geometry = fs::read(output_dir.join("surface.ply")).expect("PLY geometry artifact");
     assert!(geometry.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
+    let geometry_header = String::from_utf8_lossy(&geometry);
+    assert!(geometry_header.contains("element vertex 4\n"));
+    assert!(geometry_header.contains("element face 2\n"));
     let preview = fs::read(output_dir.join("surface.glb")).expect("GLB preview artifact");
     assert!(preview.starts_with(b"glTF"));
     let mesh = occluview_formats::gltf::read(&preview).expect("GLB should be self-contained");
+    assert_eq!(mesh.vertices().len(), 4);
+    assert_eq!(mesh.indices(), &[0, 1, 2, 3, 1, 0]);
     assert!(mesh.texture().is_some());
     let manifest = parse_json(&output.stdout);
     assert_manifest_header(&manifest);
