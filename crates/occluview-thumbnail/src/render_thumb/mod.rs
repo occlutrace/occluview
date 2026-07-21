@@ -36,14 +36,15 @@ mod rendering;
 mod tests;
 
 use cache::{
-    oversize_input_error, thumbnail_file_cache, thumbnail_file_content_cache,
-    thumbnail_file_content_key, thumbnail_setup_timeout, thumbnail_stream_cache,
-    FileThumbnailPreflightError, StreamThumbnailPreflightError, ThumbnailFileCacheKey,
-    ThumbnailFileContentKey, ThumbnailFileMetadata, ThumbnailRequestKey,
+    oversize_input_error, thumbnail_background_key, thumbnail_file_cache,
+    thumbnail_file_content_cache, thumbnail_file_content_key, thumbnail_setup_timeout,
+    thumbnail_stream_cache, FileThumbnailPreflightError, StreamThumbnailPreflightError,
+    ThumbnailFileCacheKey, ThumbnailFileContentKey, ThumbnailFileMetadata, ThumbnailRequestKey,
 };
 use concurrency::{
-    render_coalesced_thumbnail, run_thumbnail_job_with_permit, run_thumbnail_job_with_timeouts,
-    ThumbnailJobOutcome, ThumbnailJobPermit, ThumbnailJobProgress, ThumbnailRendererPool,
+    render_coalesced_thumbnail, run_thumbnail_job_with_deadline,
+    run_thumbnail_job_with_permit_deadline, ThumbnailJobOutcome, ThumbnailJobPermit,
+    ThumbnailJobProgress, ThumbnailRendererPool,
 };
 use loading::{
     load_thumbnail_mesh_from_bytes, load_thumbnail_mesh_from_bytes_kind,
@@ -216,12 +217,10 @@ pub fn render_thumbnail_file_or_placeholder_with_timeout(
         }
     };
 
-    if let Ok(mut cache) = thumbnail_file_cache().lock() {
-        if let Some(pixels) = cache.get(&plan.cache_key, spec.size_px) {
-            return pixels;
-        }
-    }
-
+    // Do not trust the metadata key as the first lookup. Some file systems
+    // preserve both byte length and coarse mtime when a file is replaced; an
+    // early path-cache hit would then show the previous mesh indefinitely.
+    // Content hashing is bounded and also deduplicates copied CAD exports.
     let (content_key, content_hit) = file_content_cache_lookup(path, &plan, spec);
     if let Some(pixels) = content_hit {
         return pixels;
@@ -231,10 +230,12 @@ pub fn render_thumbnail_file_or_placeholder_with_timeout(
         Some(cache_key) => ThumbnailRequestKey::FileContent {
             cache_key,
             size_px: spec.size_px,
+            background: thumbnail_background_key(spec.background),
         },
         None => ThumbnailRequestKey::File {
             cache_key: plan.cache_key.clone(),
             size_px: spec.size_px,
+            background: thumbnail_background_key(spec.background),
         },
     };
     let path_cache_key = plan.cache_key;
@@ -267,12 +268,19 @@ fn file_content_cache_lookup(
     let Some(pixels) = thumbnail_file_content_cache()
         .lock()
         .ok()
-        .and_then(|mut cache| cache.get(key, spec.size_px))
+        .and_then(|mut cache| {
+            cache.get_with_background(key, spec.size_px, thumbnail_background_key(spec.background))
+        })
     else {
         return (content_key, None);
     };
     if let Ok(mut path_cache) = thumbnail_file_cache().lock() {
-        path_cache.insert(plan.cache_key.clone(), spec.size_px, &pixels);
+        path_cache.insert_with_background(
+            plan.cache_key.clone(),
+            spec.size_px,
+            thumbnail_background_key(spec.background),
+            &pixels,
+        );
     }
     (content_key, Some(pixels))
 }
@@ -289,15 +297,20 @@ fn render_file_thumbnail_job(
     spec: ThumbnailSpec,
     timeout: Duration,
 ) -> Vec<u8> {
-    let setup_timeout = thumbnail_setup_timeout(timeout);
-    let result = run_thumbnail_job_with_timeouts(setup_timeout, timeout, move |progress| {
+    let result = run_thumbnail_job_with_deadline(timeout, move |progress| {
         let result = (|| -> Result<Vec<u8>, ThumbnailError> {
             let mesh = load_thumbnail_mesh_from_file(&path, metadata)?;
             let _ = progress.send(ThumbnailJobProgress::Prepared);
             rendering::render_mesh_thumbnail(mesh, spec)
         })();
         if let Ok(pixels) = &result {
-            cache_file_thumbnail(cache_keys.path, cache_keys.content, spec.size_px, pixels);
+            cache_file_thumbnail(
+                cache_keys.path,
+                cache_keys.content,
+                spec.size_px,
+                thumbnail_background_key(spec.background),
+                pixels,
+            );
         }
         let _ = progress.send(ThumbnailJobProgress::Finished(result));
     });
@@ -315,8 +328,8 @@ fn render_file_thumbnail_job(
         }
         ThumbnailJobOutcome::SetupTimedOut => {
             tracing::warn!(
-                ?setup_timeout,
-                "thumbnail file preparation timed out before a renderer became available; returning placeholder"
+                ?timeout,
+                "thumbnail file exceeded its end-to-end budget before preparation completed; returning placeholder"
             );
             placeholder_thumbnail(spec)
         }
@@ -338,14 +351,15 @@ fn cache_file_thumbnail(
     path_cache_key: ThumbnailFileCacheKey,
     content_cache_key: Option<ThumbnailFileContentKey>,
     size_px: u16,
+    background: [u64; 4],
     pixels: &[u8],
 ) {
     if let Ok(mut cache) = thumbnail_file_cache().lock() {
-        cache.insert(path_cache_key, size_px, pixels);
+        cache.insert_with_background(path_cache_key, size_px, background, pixels);
     }
     if let Some(content_key) = content_cache_key {
         if let Ok(mut cache) = thumbnail_file_content_cache().lock() {
-            cache.insert(content_key, size_px, pixels);
+            cache.insert_with_background(content_key, size_px, background, pixels);
         }
     }
 }
@@ -402,7 +416,11 @@ fn render_thumbnail_shared_or_placeholder_with_timeout_impl(
         }
     };
     if let Ok(mut cache) = thumbnail_stream_cache().lock() {
-        if let Some(pixels) = cache.get(&plan.cache_key, spec.size_px) {
+        if let Some(pixels) = cache.get_with_background(
+            &plan.cache_key,
+            spec.size_px,
+            thumbnail_background_key(spec.background),
+        ) {
             return pixels;
         }
     }
@@ -410,12 +428,12 @@ fn render_thumbnail_shared_or_placeholder_with_timeout_impl(
     let inflight_key = ThumbnailRequestKey::Stream {
         cache_key: plan.cache_key.clone(),
         size_px: spec.size_px,
+        background: thumbnail_background_key(spec.background),
     };
     render_coalesced_thumbnail(
         inflight_key,
         plan.wait_timeout,
         move || {
-            let setup_timeout = thumbnail_setup_timeout(timeout);
             let cache_key_for_store = plan.cache_key.clone();
             let kind = plan.kind;
             let work = move |progress: std::sync::mpsc::SyncSender<
@@ -431,16 +449,21 @@ fn render_thumbnail_shared_or_placeholder_with_timeout_impl(
                 // next repaint instead of being thrown away.
                 if let Ok(pixels) = &result {
                     if let Ok(mut cache) = thumbnail_stream_cache().lock() {
-                        cache.insert(cache_key_for_store, spec.size_px, pixels);
+                        cache.insert_with_background(
+                            cache_key_for_store,
+                            spec.size_px,
+                            thumbnail_background_key(spec.background),
+                            pixels,
+                        );
                     }
                 }
                 let _ = progress.send(ThumbnailJobProgress::Finished(result));
             };
             let result = match reservation {
                 Some(ThumbnailJobReservation(permit)) => {
-                    run_thumbnail_job_with_permit(permit, setup_timeout, timeout, work)
+                    run_thumbnail_job_with_permit_deadline(permit, timeout, work)
                 }
-                None => run_thumbnail_job_with_timeouts(setup_timeout, timeout, work),
+                None => run_thumbnail_job_with_deadline(timeout, work),
             };
 
             match result {
@@ -456,8 +479,8 @@ fn render_thumbnail_shared_or_placeholder_with_timeout_impl(
                 }
                 ThumbnailJobOutcome::SetupTimedOut => {
                     tracing::warn!(
-                        ?setup_timeout,
-                        "thumbnail preparation timed out before a renderer became available; returning placeholder"
+                        ?timeout,
+                        "thumbnail stream exceeded its end-to-end budget before preparation completed; returning placeholder"
                     );
                     placeholder_thumbnail(spec)
                 }

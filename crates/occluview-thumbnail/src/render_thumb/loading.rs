@@ -1,6 +1,6 @@
 use super::{
-    cache, oversize_input_error, thumbnail_setup_timeout, Duration, FileThumbnailPreflightError,
-    Path, StreamThumbnailPreflightError, ThumbnailError, MAX_THUMBNAIL_FILE_BYTES,
+    cache, oversize_input_error, Duration, FileThumbnailPreflightError, Path,
+    StreamThumbnailPreflightError, ThumbnailError, MAX_THUMBNAIL_FILE_BYTES,
     MAX_THUMBNAIL_INPUT_BYTES,
 };
 use crate::fast_thumb::{
@@ -235,7 +235,10 @@ pub(super) fn prepare_file_thumbnail_render(
     Ok(cache::FileThumbnailRenderPlan {
         metadata,
         cache_key: cache::ThumbnailFileCacheKey::new(path, &metadata),
-        wait_timeout: thumbnail_setup_timeout(timeout).saturating_add(timeout),
+        // The shell gets one wall-clock budget for queueing, decoding, and
+        // rendering. Adding setup and render budgets made a mixed folder wait
+        // up to fourteen seconds per request before Explorer gave up.
+        wait_timeout: timeout,
     })
 }
 
@@ -255,7 +258,7 @@ pub(super) fn prepare_stream_thumbnail_render(
     Ok(cache::StreamThumbnailRenderPlan {
         kind,
         cache_key: cache::ThumbnailStreamCacheKey::new(kind, bytes),
-        wait_timeout: thumbnail_setup_timeout(timeout).saturating_add(timeout),
+        wait_timeout: timeout,
     })
 }
 

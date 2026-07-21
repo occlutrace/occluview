@@ -29,6 +29,27 @@ fn file_thumbnail_cache_downscales_divisible_larger_size() {
 }
 
 #[test]
+fn thumbnail_cache_keeps_background_variants_isolated() {
+    let mut cache = cache::ThumbnailFileCache::default();
+    let key = ThumbnailFileCacheKey {
+        path: PathBuf::from("/tmp/background.stl"),
+        byte_len: 123,
+        modified_nanos: 456,
+    };
+    let dark = vec![8_u8; 16 * 16 * 4];
+    let light = vec![240_u8; 16 * 16 * 4];
+
+    cache.insert_with_background(key.clone(), 16, [0; 4], &dark);
+    cache.insert_with_background(key.clone(), 16, [1, 0, 0, 0], &light);
+
+    assert_eq!(cache.get_with_background(&key, 16, [0; 4]), Some(dark));
+    assert_eq!(
+        cache.get_with_background(&key, 16, [1, 0, 0, 0]),
+        Some(light)
+    );
+}
+
+#[test]
 fn file_thumbnail_cache_evicts_oldest_files_to_stay_bounded() {
     let mut cache = cache::ThumbnailFileCache::new(1, 4 * 1024 * 1024);
     let first = ThumbnailFileCacheKey {
@@ -197,19 +218,19 @@ fn timed_out_thumbnail_job_keeps_gate_until_the_worker_really_finishes() {
 }
 
 #[test]
-fn file_backed_thumbnail_timeout_uses_staged_deadlines_instead_of_wrapping_queue_wait() {
+fn file_backed_thumbnail_timeout_is_one_end_to_end_budget() {
     let timeout = Duration::from_millis(75);
     let path = fixtures::write_temp_fixture("obj", b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
     let plan = prepare_file_thumbnail_render(&path, timeout)
         .expect("supported mesh file should produce a render plan");
     assert_eq!(
-        plan.wait_timeout,
-        thumbnail_setup_timeout(timeout).saturating_add(timeout)
+        plan.wait_timeout, timeout,
+        "file thumbnail callers must receive one wall-clock budget"
     );
 }
 
 #[test]
-fn stream_thumbnail_timeout_uses_staged_deadlines_instead_of_wrapping_queue_wait() {
+fn stream_thumbnail_timeout_is_one_end_to_end_budget() {
     let timeout = Duration::from_millis(90);
     let plan = prepare_stream_thumbnail_render(
         Some("obj"),
@@ -218,8 +239,8 @@ fn stream_thumbnail_timeout_uses_staged_deadlines_instead_of_wrapping_queue_wait
     )
     .expect("supported thumbnail stream should produce a render plan");
     assert_eq!(
-        plan.wait_timeout,
-        thumbnail_setup_timeout(timeout).saturating_add(timeout)
+        plan.wait_timeout, timeout,
+        "stream thumbnail callers must receive one wall-clock budget"
     );
 }
 
@@ -658,6 +679,7 @@ fn inflight_thumbnail_coalesces_duplicate_requests() {
     let key = ThumbnailRequestKey::Stream {
         cache_key: cache::ThumbnailStreamCacheKey::new(occluview_formats::FormatKind::Obj, bytes),
         size_px: 96,
+        background: [0; 4],
     };
     let run_count = Arc::new(AtomicUsize::new(0));
     let barrier = Arc::new(std::sync::Barrier::new(3));
@@ -696,6 +718,7 @@ fn inflight_thumbnail_follower_timeout_uses_fallback_without_duplicate_render() 
     let key = ThumbnailRequestKey::Stream {
         cache_key: cache::ThumbnailStreamCacheKey::new(occluview_formats::FormatKind::Obj, bytes),
         size_px: 128,
+        background: [0; 4],
     };
     let run_count = Arc::new(AtomicUsize::new(0));
 

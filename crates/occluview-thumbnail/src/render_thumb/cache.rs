@@ -23,14 +23,17 @@ pub(super) enum ThumbnailRequestKey {
     File {
         cache_key: ThumbnailFileCacheKey,
         size_px: u16,
+        background: [u64; 4],
     },
     FileContent {
         cache_key: ThumbnailFileContentKey,
         size_px: u16,
+        background: [u64; 4],
     },
     Stream {
         cache_key: ThumbnailStreamCacheKey,
         size_px: u16,
+        background: [u64; 4],
     },
 }
 
@@ -63,6 +66,7 @@ pub(super) struct ThumbnailStreamCacheKey {
 #[derive(Clone, Debug)]
 struct CachedThumbnail {
     size_px: u16,
+    background: [u64; 4],
     pixels: Vec<u8>,
 }
 
@@ -135,14 +139,31 @@ where
         }
     }
 
+    #[cfg(test)]
     pub(super) fn get(&mut self, key: &K, size_px: u16) -> Option<Vec<u8>> {
+        self.get_with_background(key, size_px, [0; 4])
+    }
+
+    pub(super) fn get_with_background(
+        &mut self,
+        key: &K,
+        size_px: u16,
+        background: [u64; 4],
+    ) -> Option<Vec<u8>> {
         let pixels = self.entries.get(key).and_then(|thumbnails| {
-            if let Some(exact) = thumbnails.iter().find(|thumb| thumb.size_px == size_px) {
+            if let Some(exact) = thumbnails
+                .iter()
+                .find(|thumb| thumb.size_px == size_px && thumb.background == background)
+            {
                 return Some(exact.pixels.clone());
             }
             thumbnails
                 .iter()
-                .filter(|thumb| thumb.size_px > size_px && thumb.size_px % size_px == 0)
+                .filter(|thumb| {
+                    thumb.background == background
+                        && thumb.size_px > size_px
+                        && thumb.size_px % size_px == 0
+                })
                 .min_by_key(|thumb| thumb.size_px)
                 .map(|thumb| {
                     rendering::downsample_rgba_premultiplied(&thumb.pixels, thumb.size_px, size_px)
@@ -152,9 +173,23 @@ where
         Some(pixels)
     }
 
+    #[cfg(test)]
     pub(super) fn insert(&mut self, key: K, size_px: u16, pixels: &[u8]) {
+        self.insert_with_background(key, size_px, [0; 4], pixels);
+    }
+
+    pub(super) fn insert_with_background(
+        &mut self,
+        key: K,
+        size_px: u16,
+        background: [u64; 4],
+        pixels: &[u8],
+    ) {
         let thumbnails = self.entries.entry(key.clone()).or_default();
-        if let Some(existing) = thumbnails.iter_mut().find(|thumb| thumb.size_px == size_px) {
+        if let Some(existing) = thumbnails
+            .iter_mut()
+            .find(|thumb| thumb.size_px == size_px && thumb.background == background)
+        {
             self.total_bytes = self
                 .total_bytes
                 .saturating_sub(existing.pixels.len())
@@ -165,6 +200,7 @@ where
             self.total_bytes = self.total_bytes.saturating_add(pixels.len());
             thumbnails.push(CachedThumbnail {
                 size_px,
+                background,
                 pixels: pixels.to_vec(),
             });
             thumbnails.sort_by_key(|thumb| thumb.size_px);
@@ -192,6 +228,15 @@ where
             }
         }
     }
+}
+
+pub(super) fn thumbnail_background_key(background: [f64; 4]) -> [u64; 4] {
+    [
+        background[0].to_bits(),
+        background[1].to_bits(),
+        background[2].to_bits(),
+        background[3].to_bits(),
+    ]
 }
 
 impl Default for ThumbnailFileCache {
@@ -241,10 +286,10 @@ pub(super) fn thumbnail_file_metadata(
 
 /// Build a bounded content key for a file-backed thumbnail.
 ///
-/// The path/mtime key remains the first-level cache because it is essentially
-/// free. This second-level key is only computed after that misses, and lets
-/// Explorer's common copy-heavy folders (for example, exported CAD projects)
-/// share one decode and one GPU render across differently named files.
+/// The content key lets Explorer's common copy-heavy folders (for example,
+/// exported CAD projects) share one decode and one GPU render across
+/// differently named files. Callers compute it before consulting the cheap
+/// path cache so same-size replacements cannot return stale pixels.
 pub(super) fn thumbnail_file_content_key(
     path: &Path,
     metadata: &ThumbnailFileMetadata,
