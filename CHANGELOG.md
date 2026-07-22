@@ -11,6 +11,9 @@
   types, with the existing deterministic fallback for a single failed item.
 - Reworked the mesh editor controls so Size and Force use the full available
   rail, and made About a compact centered dialog with balanced links.
+- Synchronized the existing Cut View section panel with the main camera for
+  lines, shaded slices, measurements, pan, and zoom; removed the redundant
+  orientation gizmo.
 - Kept Linux single-instance activation and the existing Windows/Linux package
   release checks in the same tag-driven release path.
 
