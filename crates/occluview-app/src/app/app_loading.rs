@@ -1,8 +1,8 @@
 use super::{
     combine_loaded_scene, egui, load_error_dialog, load_status_message, mpsc,
-    read_files_with_key_provider, AppErrorDialog, Instant, LoadQueueCameraReset, OccluViewApp,
-    PathBuf, PendingReplaceOpen, PendingSceneLoad, Result, RuntimeHpsKeyProvider, Scene,
-    SceneLoadMode, SceneLoadRequest, TryRecvError, FOREGROUND_PULSE_DURATION,
+    read_files_with_key_provider, single_instance, AppErrorDialog, Instant, LoadQueueCameraReset,
+    OccluViewApp, PathBuf, PendingReplaceOpen, PendingSceneLoad, Result, RuntimeHpsKeyProvider,
+    Scene, SceneLoadMode, SceneLoadRequest, TryRecvError, FOREGROUND_PULSE_DURATION,
 };
 
 /// Load one or more mesh files into a scene.
@@ -135,9 +135,13 @@ impl OccluViewApp {
             Err(TryRecvError::Empty) => return,
             Err(TryRecvError::Disconnected) => {
                 let source = active.source;
+                let startup_token = self.pending_raise_token.take();
                 self.active_load = None;
                 self.status_message = Some("Open failed: loader stopped".to_string());
                 tracing::error!(source, "scene loader disconnected");
+                if source == "startup" || source == "single-instance" {
+                    single_instance::complete_startup_notification(startup_token.as_deref());
+                }
                 self.start_next_queued_load();
                 return;
             }
@@ -146,13 +150,15 @@ impl OccluViewApp {
         let Some(active) = self.active_load.take() else {
             return;
         };
-        let load_settled = result.is_ok() && self.queued_loads.is_empty();
+        let load_settled = self.queued_loads.is_empty();
         let raise_after_handoff = active.source == "single-instance" && load_settled;
         let raise_after_startup = active.source == "startup" && load_settled;
         self.apply_scene_load_result(active, result);
         if raise_after_handoff {
             // Second (definitive) raise now that the window has fresh content.
+            let startup_token = self.pending_raise_token.clone();
             self.raise_window_for_incoming_open(ctx);
+            single_instance::complete_startup_notification(startup_token.as_deref());
             // The handoff is complete; drop its provenance token.
             self.pending_raise_token = None;
         } else if raise_after_startup {
@@ -308,15 +314,24 @@ impl OccluViewApp {
     }
 
     /// Quiet startup raise: the first launch claims focus with the launcher's
-    /// own activation token on X11 and otherwise does NOTHING. With
-    /// `StartupNotify=false` in the .desktop the WM focuses fresh windows by
-    /// itself; the attention/on-top fallbacks used for handoffs would create
-    /// the very "window is ready" noise this avoids.
+    /// activation token through X11 or Wayland. Without a token, the normal
+    /// compositor/window-manager fallback remains the only policy-compliant
+    /// option for a launch that did not originate from a user action.
     pub(super) fn raise_window_for_startup_open(&mut self, ctx: &egui::Context) {
         let token = self.pending_raise_token.take();
-        if self.raise_target.try_activate(token.as_deref()) {
+        let activated = self.raise_target.try_activate(token.as_deref());
+        single_instance::complete_startup_notification(token.as_deref());
+        if activated {
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            return;
         }
+        // Keep the first launch visible and unminimized even when the process
+        // was started without a desktop activation token (for example from a
+        // terminal). A compositor may still refuse focus by policy, but this
+        // does not add a fake always-on-top or attention pulse.
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
     }
 
     pub(super) fn raise_window_for_incoming_open_impl(&mut self, ctx: &egui::Context) {
@@ -325,22 +340,19 @@ impl OccluViewApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
 
-        // Preferred path (X11): send `_NET_ACTIVE_WINDOW` ourselves with the
-        // forwarded user-interaction provenance, which the WM honors. winit's
-        // own `Focus` (source=1, CURRENT_TIME) would be rejected as a focus
-        // steal, but a real activation here makes the follow-up harmless.
+        // Preferred path: send the compositor-specific activation request with
+        // the forwarded user-interaction provenance. winit's own `Focus` is not
+        // enough for a live Wayland surface and can be rejected as a focus
+        // steal on X11.
         let token = self.pending_raise_token.clone();
         if self.raise_target.try_activate(token.as_deref()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             return;
         }
 
-        // Fallback (Wayland, or X11 without a usable window handle): raising a
-        // live window is denied by focus-stealing prevention and unreachable
-        // through eframe 0.29 / winit 0.30 (Wayland `focus_window` is a no-op;
-        // xdg-activation only applies at window creation — see activation.rs).
-        // Do the best the stack allows: float briefly on top and flag the
-        // taskbar entry so the user sees the pending file, then reset.
+        // Fallback (missing token/handle or a failed compositor request): make
+        // the pending file visible and request attention without leaving the
+        // viewer permanently topmost.
         ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
             egui::viewport::WindowLevel::AlwaysOnTop,
         ));

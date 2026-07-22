@@ -52,6 +52,7 @@ mod app_render;
 mod app_scale_bar;
 mod app_scene_commit;
 mod app_sculpt;
+mod app_sculpt_worker;
 mod app_viewport;
 mod selection_overlay;
 mod state;

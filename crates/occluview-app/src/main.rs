@@ -42,6 +42,7 @@ mod probe_section;
 mod repair_report;
 mod scene_loading;
 mod sculpt_tool;
+mod sculpt_worker;
 mod section_view;
 mod single_instance;
 mod ui_theme;

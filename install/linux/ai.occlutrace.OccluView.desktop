@@ -7,10 +7,8 @@ Exec=occluview %F
 Icon=occluview
 Terminal=false
 Categories=Graphics;3DGraphics;Viewer;
-# eframe/winit never completes a startup-notification sequence (no
-# with_activation_token path through eframe 0.29). Advertising support makes
-# GNOME wait, time out, map the window UNFOCUSED, and show the "OccluView is
-# ready" notification. With it off, mutter focuses the fresh window normally.
-StartupNotify=false
+# The app forwards the launch token to its existing X11/Wayland surface after
+# the window is created, so file-manager launches can activate the viewer.
+StartupNotify=true
 StartupWMClass=ai.occlutrace.OccluView
 MimeType=model/stl;model/obj;model/gltf-binary;application/x-ply;application/x-occluview-hps;
